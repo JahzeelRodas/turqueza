@@ -1,0 +1,26 @@
+{
+  "name": "ecommerce-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plataforma e-commerce headless y modular, agnóstica al rubro (tema visual y bloques configurables).",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api start:dev",
+    "build": "pnpm --filter api build && pnpm --filter web build",
+    "build:api": "pnpm --filter api build",
+    "build:web": "pnpm --filter web build",
+    "start:api": "pnpm --filter api start",
+    "start:web": "pnpm --filter web start",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter api prisma:generate",
+    "db:migrate": "pnpm --filter api prisma:migrate",
+    "db:migrate:deploy": "pnpm --filter api prisma:migrate:deploy",
+    "db:seed": "pnpm --filter api prisma:seed",
+    "db:studio": "pnpm --filter api prisma:studio"
+  }
+}

@@ -1,0 +1,60 @@
+name: CI
+
+# Se ejecuta en cada PR y en cada push a main. Si falla, el PR no debe poder
+# fusionarse (activa la protección de rama descrita en docs/CI-CD.md).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Valores ficticios: el CI no se conecta a ninguna base de datos.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
+      API_INTERNAL_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_STORE_THEME: joyeria
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Generar y validar Prisma
+        run: |
+          pnpm db:generate
+          pnpm --filter api exec prisma validate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build de API y Web
+        run: pnpm build

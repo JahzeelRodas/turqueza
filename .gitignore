@@ -1,0 +1,44 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Build
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Entorno (los archivos *.example sí se versionan)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+!.env.example
+!.env.*.example
+
+# Prisma
+apps/api/prisma/migrations/dev.db*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Sistema / IDE
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Artefactos de Windows (p. ej. redirecciones a `nul`)
+nul
+
+# Misc
+.turbo/
+coverage/

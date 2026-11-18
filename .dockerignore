@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.git
+.gitignore
+*.md
+.env
+.env.*
+coverage
+.turbo
+npm-debug.log*
+pnpm-debug.log*

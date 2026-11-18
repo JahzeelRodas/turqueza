@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-bg: #f5f1e8;
+  --color-surface: #fffcf6;
+  --color-fg: #17140f;
+  --color-muted: #6d6559;
+  --color-line: #e2dacd;
+  --color-accent: #0d4a45;
+  --color-accent-contrast: #f8f5ee;
+  --color-accent-soft: #e3ece8;
+  --color-gold: #b08d57;
+  --color-gold-soft: #efe4d2;
+  --color-sale: #9e3b2e;
+  --color-sale-soft: #f6e3de;
+  --radius-card: 2px;
+  --radius-button: 2px;
+  --shadow-soft: 0 24px 60px -38px rgba(23, 20, 15, 0.55);
+  --font-heading: var(--font-serif);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-accent-contrast);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+    font-weight: 400;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Fondo editorial del storefront: papel cálido con un halo dorado. */
+  .storefront-canvas {
+    background-color: var(--color-bg);
+    background-image:
+      radial-gradient(ellipse 90% 55% at 50% -12%, rgba(176, 141, 87, 0.14), transparent 68%),
+      radial-gradient(ellipse 60% 45% at 100% 0%, rgba(13, 74, 69, 0.06), transparent 70%);
+    background-attachment: fixed;
+  }
+
+  .gold-rule {
+    background-image: linear-gradient(90deg, var(--color-gold), transparent);
+  }
+
+  .hairline {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-line) 12%,
+      var(--color-line) 88%,
+      transparent
+    );
+  }
+
+  /* Subrayado fino que crece en hover, usado en navegación. */
+  .link-rule {
+    position: relative;
+  }
+
+  .link-rule::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -0.35rem;
+    height: 1px;
+    background-color: var(--color-gold);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .link-rule:hover::after,
+  .link-rule[data-active='true']::after {
+    transform: scaleX(1);
+  }
+
+  .image-luxe {
+    filter: saturate(0.94) contrast(1.02);
+  }
+}

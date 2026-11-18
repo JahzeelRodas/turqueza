@@ -1,0 +1,48 @@
+Actúa como un Arquitecto de Software Full Stack y Senior Frontend/Backend Engineer experto en Node.js, Next.js, NestJS y PostgreSQL.
+
+Necesito que inicialices la estructura base y el código inicial para una plataforma de Comercio Electrónico (E-commerce) Headless y Modular. El despliegue de producción se realizará conectando directamente el repositorio de GitHub al **Plan Business de Hostinger** (Node.js nativo), por lo que la arquitectura debe ser limpia, optimizada para este entorno y sin contenedores Docker.
+
+### Contexto del Proyecto:
+- **Caso de uso inicial:** Tienda online de alta gama para una Joyería (UI/UX minimalista, elegante, con transiciones fluidas y diseño responsivo).
+- **Funcionalidad Comercial Clave (Joyería):** 
+  1. **Asistente de Grabado Láser Personalizado:** Módulo interactivo en la ficha del producto para habilitar grabado, ingresar texto personalizado (con límite de caracteres), seleccionar tipografías y elegir ubicación (interior/exterior) con vista previa en tiempo real.
+  2. **Envíos Nacionales en Bolivia:** Gestión de destinos departamentales (La Paz, Santa Cruz, Cochabamba, Tarija, Oruro, Potosí, Chuquisaca, Beni, Pando) y costos de envío asociados.
+  3. **Checkout e Interacción por WhatsApp:** El flujo de finalización de compra empaqueta el carrito, los datos del cliente, la dirección/departamento de envío y las especificaciones exactas del grabado láser en un mensaje formateado listo para enviarse a la API de WhatsApp de la joyería (`wa.me`).
+- **Objetivo de arquitectura:** El código debe ser 100% reutilizable y agnóstico al rubro. Debe ser fácil adaptar el proyecto a otros sectores (ropa, tecnología, cosmética) cambiando únicamente el tema visual (tokens CSS) y la configuración de bloques del CMS/DB.
+
+---
+
+### Requerimientos Técnicos y Stack:
+
+1. **Frontend (App Router):**
+   - Next.js (TypeScript) + Tailwind CSS + Framer Motion.
+   - Arquitectura basada en **Diseño Atómico / Módulos de Bloques dinámicos**.
+   - Definición de un sistema de temas visuales mediante tokens (`store-theme.ts` o variables Tailwind) para cambiar colores, fuentes (Serif/Sans) y bordes fácilmente.
+   - Componente especializado: `LaserEngravingCustomizer.tsx` para el asistente de grabado.
+
+2. **Backend & Base de Datos:**
+   - Node.js (NestJS modular con TypeScript) optimizado para ser ejecutado desde el administrador Node de Hostinger.
+   - PostgreSQL / MySQL (según compatibilidad del panel de Hostinger) gestionado con Prisma ORM.
+   - Schema flexible con campos JSONB (`metadata`) para atributos dinámicos y soporte relacional completo para órdenes, carritos y especificaciones de grabado e items de envío nacional.
+
+3. **Secciones/Módulos a implementar en la estructura:**
+   - **Header / Navigation:** Mega menú responsivo alimentado por JSON.
+   - **Hero Section:** Componente reusable con soporte para video/imagen de fondo, capas y CTAs.
+   - **Value Proposition Bar:** Grid configurable para sellos de confianza (garantía, envíos nacionales seguros, certificados).
+   - **Category Grid:** Tarjetas con efectos hover fluidos (Framer Motion).
+   - **Product Card & Showcase:** Tarjeta de producto parametrizable (badges, segunda imagen en hover, selector rápido de variantes).
+   - **Brand Storytelling Block:** Layout `SplitContentBlock` (Media + Texto) intercambiable.
+   - **Widget Específico (Joyería):** Componentes aislados de `RingSizeGuideModal` (Guía de tallas) y `LaserEngravingCustomizer` integrables en la ficha del producto.
+   - **Footer:** Pie de página modular reconfigurable por JSON de tienda.
+
+---
+
+### Entregables esperados:
+
+1. **Estructura de Directorios (Monorepo):** Árbol de carpetas recomendado separando `/apps/frontend` y `/apps/backend`.
+2. **Schema de Prisma (`schema.prisma`):** Modelo de base de datos optimizado para `Product`, `Category`, `CartItem`, `Order`, `OrderItem` con soporte completo para metadatos de grabado láser, ciudades de Bolivia y estados de pedido por WhatsApp.
+3. **Componente de Configuración de Tema:** Ejemplo de `store-theme.ts` estructurado para cambiar fácilmente entre rubros.
+4. **Ejemplos de Componentes Reutilizables:** Implementación en React (Next.js + Tailwind + Framer Motion) de la `ProductCard`, la `HeroSection` y el widget `LaserEngravingCustomizer`.
+5. **Archivos de Configuración de Arranque:** Configuración de scripts en `package.json` listos para el despliegue nativo en Hostinger Business.
+
+Por favor, empieza generando la estructura de archivos y los primeros archivos de configuración clave con código limpio, escalable y buenas prácticas en TypeScript.

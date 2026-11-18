@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────
+# Stack de despliegue para VPS Ubuntu: Nginx (proxy inverso) →
+# Web (Next.js) + API (NestJS) → PostgreSQL. Ejecutar: docker compose up -d --build
+#
+# Antes de arrancar define en un .env junto a este archivo:
+#   POSTGRES_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD y ADMIN_JWT_SECRET.
+# El arranque falla de forma explícita si faltan, para no usar credenciales demo.
+# ─────────────────────────────────────────────────────────────────────
+name: ecommerce-platform
+
+x-api-env: &api-env
+  DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en el .env}@db:5432/${POSTGRES_DB:-store}?schema=public"
+  PORT: 3001
+  NODE_ENV: production
+  ADMIN_EMAIL: "${ADMIN_EMAIL:?Define ADMIN_EMAIL en el .env}"
+  ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Define ADMIN_PASSWORD en el .env}"
+  ADMIN_NAME: ${ADMIN_NAME:-Administrador}
+  ADMIN_JWT_SECRET: "${ADMIN_JWT_SECRET:?Define ADMIN_JWT_SECRET (mínimo 32 caracteres) en el .env}"
+  ADMIN_TOKEN_TTL_HOURS: ${ADMIN_TOKEN_TTL_HOURS:-12}
+
+services:
+  # ── Base de datos transaccional ──────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en el .env}"
+      POSTGRES_DB: ${POSTGRES_DB:-store}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-store}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # ── Migraciones + seed (one-shot) ────────────────────────────────────
+  db-migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment: *api-env
+    restart: "no"
+    command: sh -c "pnpm --filter api prisma:migrate:deploy && pnpm --filter api prisma:seed"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── API Headless (NestJS) ────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment: *api-env
+    restart: unless-stopped
+    # Puerto expuesto solo dentro de la red interna (Nginx hace de proxy)
+    # Para depurar directamente: descomentar ↓
+    # ports: ["3001:3001"]
+    depends_on:
+      db:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  # ── Storefront (Next.js App Router) ─────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Vacío => el storefront llama a /api (mismo origen vía Nginx)
+        NEXT_PUBLIC_API_URL: ""
+        NEXT_PUBLIC_STORE_THEME: ${NEXT_PUBLIC_STORE_THEME:-joyeria}
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:3001
+    restart: unless-stopped
+
+  # ── Proxy inverso ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+
+volumes:
+  db_data:

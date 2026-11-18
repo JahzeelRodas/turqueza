@@ -1,0 +1,272 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Plataforma e-commerce headless · PostgreSQL + Prisma
+//
+// Diseño "agnóstico al rubro":
+//  · `metadata` (JSONB)  → atributos dinámicos propios de cada sector.
+//    Ej. joyería: { material, piedra, quilates } · ropa: { talla, color }.
+//  · `attributes` (JSONB) → flags/config del producto para la UI:
+//    { badges: string[], hasSizeGuide: boolean, ... }.
+//  · `engraving` (JSONB) → configuración del asistente de grabado por producto:
+//    { enabled, price, maxChars, fonts: [...], placements: [...] }.
+//  · `variants`          → SKUs concretos con stock y precio override.
+//  · `StoreConfig`       → tema visual + layout de bloques (JSON) por tienda.
+//
+// Zona de envío: tabla `ShippingZone` con los 9 departamentos de Bolivia.
+// El checkout de WhatsApp vive en el storefront; la API expone la orden y
+// `whatsappUrl` ya formateada (ver apps/api/src/common/whatsapp.ts).
+//
+// NOTA (índice GIN): PostgreSQL soporta índices GIN sobre JSONB que aceleran
+// consultas @>, ->>. Prisma no lo declara nativamente; añádelo en la migración:
+//   CREATE INDEX "Product_metadata_gin" ON "Product" USING GIN ("metadata");
+//   CREATE INDEX "OrderItem_engraving_gin" ON "OrderItem" USING GIN ("engraving");
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ──────────────────────────────────────────────────────────────────
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING // creado en la web, aún no confirmado
+  CONFIRMED_WHATSAPP // el cliente ya envió el mensaje por WhatsApp
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// ── Catálogo ───────────────────────────────────────────────────────────────
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  imageUrl    String?
+  position    Int        @default(0)
+  isActive    Boolean    @default(true)
+  // Estructura en árbol (Categorías → Subcategorías)
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryTree")
+
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  name           String
+  subtitle       String?
+  description    String?
+  // Dinero en céntimos (evita floats); p.ej. 129000 = 1.290,00 Bs
+  price          Int
+  compareAtPrice Int?          // precio tachado para ofertas
+  currency       String        @default("BOB")
+  images         String[]      @default([])
+  status         ProductStatus @default(DRAFT)
+  isFeatured     Boolean       @default(false)
+  stock          Int           @default(0)
+  tags           String[]      @default([])
+
+  /// Atributos dinámicos del rubro (JSONB): material, talla, quilates, color...
+  metadata Json @db.JsonB
+  /// Flags de UI para la ficha de producto (JSONB): { badges, hasSizeGuide }
+  attributes Json @db.JsonB
+  /// Configuración del grabado láser (JSONB). null = no personalizable.
+  engraving Json? @db.JsonB
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants   ProductVariant[]
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId, status])
+  @@index([status, isFeatured])
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  sku     String  @unique
+  name    String // "Anillo Aurora · Oro rosa · 52"
+  price   Int? // si es null usa Product.price (override)
+  compareAtPrice Int? // precio original de la variante para ofertas
+  stock   Int     @default(0)
+  isActive Boolean @default(true)
+  position Int     @default(0)
+  imageUrl String?
+
+  /// Opciones dinámicas (JSONB): { talla: "52" } / { color: "Negro" }
+  options Json @db.JsonB
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+// ── Carrito (persistencia opcional; el storefront también soporta localStorage) ──
+
+model Cart {
+  id        String  @id @default(cuid())
+  token     String  @unique // cookie/sessionId anónimo
+  email     String?
+  currency  String  @default("BOB")
+  expiresAt DateTime?
+
+  items     CartItem[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([token])
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  quantity Int @default(1)
+  /// Especificaciones del grabado (JSONB): { enabled, text, font, placement, price }
+  engraving Json? @db.JsonB
+
+  @@index([cartId])
+}
+
+// ── Envíos nacionales (Bolivia) ────────────────────────────────────────────
+
+model ShippingZone {
+  id           String  @id @default(cuid())
+  code         String  @unique // "LP", "SC", ...
+  department   String  @unique // "La Paz", "Santa Cruz", ...
+  cities       String[] @default([])
+  price        Int // céntimos de BOB
+  freeThreshold Int? // subtotal mínimo para envío gratis (céntimos)
+  estimatedDays String @default("2-4 días hábiles")
+  isActive     Boolean @default(true)
+  position     Int     @default(0)
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+// ── Pedidos ────────────────────────────────────────────────────────────────
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  email       String
+  customerName String
+  phone       String?
+  notes       String?
+
+  /// Snapshot de la dirección de envío (JSONB): fullName, line1, city, department...
+  shippingAddress Json        @db.JsonB
+  status          OrderStatus @default(PENDING)
+
+  /// Departamento de envío (snapshot legible) + zona usada para el costo
+  shippingDepartment String?
+  shippingZoneId     String?
+  shippingZone       ShippingZone? @relation(fields: [shippingZoneId], references: [id], onDelete: SetNull)
+
+  // Dinero en céntimos
+  subtotal   Int
+  shipping   Int   @default(0)
+  total      Int
+  currency   String @default("BOB")
+
+  /// Mensaje exacto enviado a WhatsApp (auditoría del checkout)
+  whatsappMessage String? @db.Text
+
+  items     OrderItem[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status])
+  @@index([shippingZoneId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Opcionales: el pedido conserva el snapshot aunque se borre el producto
+  productId String?
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  // Snapshot del producto vendido
+  name        String
+  sku         String
+  unitPrice   Int
+  quantity    Int
+  total       Int
+  /// Opciones del variant compradas (JSONB): { talla: "52" }
+  options Json @db.JsonB
+
+  /// Especificaciones exactas del grabado láser (JSONB):
+  /// { enabled, text, font, placement, price }
+  engraving Json? @db.JsonB
+
+  @@index([orderId])
+}
+
+// ── Configuración de tienda (singleton) ───────────────────────────────────
+
+model StoreConfig {
+  id         String  @id @default("singleton")
+  storeName  String
+  tagline    String?
+  domain     String? @unique
+  currency   String  @default("BOB")
+  locale     String  @default("es-BO")
+  country    String  @default("Bolivia")
+  /// WhatsApp de la joyería en formato internacional sin "+" (ej. 59171234567)
+  whatsappNumber String?
+  /// ID del tema visual activo (registro de temas en apps/web/src/config/store-theme.ts)
+  themeId    String  @default("joyeria")
+
+  /// JSONB: navegación/mega menú, footer, sellos de confianza y layout de bloques
+  navigation Json     @db.JsonB
+  footer     Json     @db.JsonB
+  valueProps Json     @db.JsonB
+  homeLayout Json     @db.JsonB
+
+  updatedAt DateTime @updatedAt
+}

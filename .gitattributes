@@ -1,0 +1,20 @@
+# Normaliza finales de línea para que el repo funcione igual en Windows, Linux y
+# en el entorno de build de Hostinger.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.avif  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary

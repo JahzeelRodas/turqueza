@@ -1,0 +1,2 @@
+corepack pnpm --filter api dev
+corepack pnpm --filter web dev
