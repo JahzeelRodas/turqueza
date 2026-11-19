@@ -11,9 +11,9 @@ const PREFIX = 'api';
  * Orígenes permitidos para el navegador.
  *
  * En el despliegue de Hostinger con backend y frontend separados, la web vive
- * en https://tudominio.com y la API en https://api.tudominio.com. Sin CORS la
- * web no puede crear pedidos ni usar el panel. En producción exigimos la
- * variable para no abrir la API a cualquier origen por accidente.
+ * en https://turqueza.rovelbots.com y la API en https://turqueza-api.rovelbots.com.
+ * Sin CORS la web no puede crear pedidos ni usar el panel. En producción exigimos
+ * la variable para no abrir la API a cualquier origen por accidente.
  */
 function resolveCorsOrigins(): string[] | boolean {
   const raw = process.env.CORS_ORIGIN?.trim();
@@ -30,10 +30,23 @@ function resolveCorsOrigins(): string[] | boolean {
 
   if (raw === '*') return true;
 
-  return raw
+  const origins = raw
     .split(',')
-    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+
+  if (origins.length === 0 && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[bootstrap] CORS_ORIGIN no contiene ningún origen válido.',
+    );
+  }
+
+  return origins;
+}
+
+function resolvePort(fallback = 3001): number {
+  const parsed = Number(process.env.PORT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 async function bootstrap() {
@@ -73,11 +86,14 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  const port = Number(process.env.PORT ?? 3001);
+  const port = resolvePort(3001);
   // 0.0.0.0 es obligatorio en Hostinger: 127.0.0.1 no es accesible desde el proxy.
   await app.listen(port, '0.0.0.0');
 
   console.log(`🚀 API lista en http://0.0.0.0:${port}/${PREFIX}`);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('[bootstrap] Error fatal al iniciar la API:', err);
+  process.exit(1);
+});
