@@ -51,8 +51,8 @@ hPanel → **Websites → Add Website → Node.js web app → Connect with GitHu
 | Framework | **Other / Node.js** (no elijas Next.js) |
 | Node.js | **22** |
 | Package manager | **pnpm** |
-| Build command | `pnpm build` (o `build` si el campo pide solo el script) |
-| Start command | `pnpm start` (o `node server.mjs`) |
+| Build command | `build` (script de `package.json`; si el panel acepta el comando completo, `pnpm build`) |
+| Start command | `pnpm start` (o entry file `server.mjs` / `node server.mjs`) |
 | Output directory | `.` (o vacío) |
 | Entry file | `server.mjs` (si el panel lo pide) |
 | Dominio | `turqueza.rovelbots.com` y `www.turqueza.rovelbots.com` |

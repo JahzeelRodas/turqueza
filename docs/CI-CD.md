@@ -92,8 +92,8 @@ NestJS y Next.js como procesos internos y publica `/` y `/api/*` en el mismo dom
 | Framework | **Other / Node.js** (no Next.js) |
 | Node.js | **22** |
 | Package manager | **pnpm** |
-| Build command | `pnpm build` (o `build`) |
-| Start command | `pnpm start` (o `node server.mjs`) |
+| Build command | `build` (o `pnpm build` si acepta el comando completo) |
+| Start command | `pnpm start` (o entry file `server.mjs` / `node server.mjs`) |
 | Output directory | `.` (o vacío) |
 | Entry file | `server.mjs` (si el panel lo pide) |
 | Dominio | `tudominio.com` y `www.tudominio.com` |

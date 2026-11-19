@@ -18,16 +18,23 @@ concurrency:
 
 jobs:
   verify:
-    name: Typecheck & build
+    name: Typecheck, build & gateway
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     env:
       DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci?connection_limit=5
-      NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
+      # Igual que producción: el navegador usa /api del mismo origen.
+      NEXT_PUBLIC_API_URL: ""
       API_INTERNAL_URL: http://127.0.0.1:3001
       NEXT_PUBLIC_STORE_THEME: joyeria
       NEXT_TELEMETRY_DISABLED: 1
+      ADMIN_EMAIL: admin@turquesa.bo
+      ADMIN_PASSWORD: TurquesaAdmin2026!
+      ADMIN_NAME: Administrador
+      ADMIN_JWT_SECRET: ci-secret-turquesa-2026-cadena-larga-para-firmar-tokens
+      ADMIN_TOKEN_TTL_HOURS: 12
+      CORS_ORIGIN: http://127.0.0.1:8080
 
     services:
       mysql:
@@ -73,5 +80,32 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Validar gateway
+        run: node --check server.mjs
+
       - name: Build de API y Web
         run: pnpm build
+
+      - name: Smoke test del gateway
+        run: |
+          set -euo pipefail
+          PORT=8080 RUN_SEED=false node server.mjs > /tmp/gateway.log 2>&1 &
+          GATEWAY_PID=$!
+          trap 'kill "$GATEWAY_PID" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/api/health > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          if ! curl -fsS http://127.0.0.1:8080/api/health; then
+            cat /tmp/gateway.log
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:8080/api/products > /dev/null
+          curl -fsS http://127.0.0.1:8080/ > /dev/null
+
+          kill "$GATEWAY_PID" 2>/dev/null || true
+          wait "$GATEWAY_PID" 2>/dev/null || true
