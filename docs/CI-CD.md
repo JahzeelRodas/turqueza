@@ -263,6 +263,7 @@ En **Deployments** puedes consultar builds anteriores, sus logs y volver a lanza
 | Síntoma | Causa / solución |
 | --- | --- |
 | `package.json not found` | **Root directory** incorrecto: `apps/api` o `apps/web`. |
+| `403 Forbidden` de Hostinger | El dominio apunta a un sitio estático vacío o el `.htaccess` está obsoleto. Reasigna el dominio a la Web App y pulsa **Redeploy**. |
 | Hostinger usa npm en vez de pnpm | Selecciona **pnpm** manualmente; el `pnpm-lock.yaml` está en la raíz del monorepo. |
 | El build de Next agota memoria | Reduce el build a una app o sube de plan; API y Web se compilan por separado. |
 | Build verde pero la app no responde | Revisa **Runtime Logs**; suele ser una variable de entorno o el puerto. |

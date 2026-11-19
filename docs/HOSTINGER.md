@@ -238,6 +238,30 @@ git push origin main
 Las migraciones de base de datos son forward-only: si el cambio de esquema es destructivo,
 prepara el script de vuelta atrás antes de desplegar. Más detalle en [CI-CD.md](CI-CD.md).
 
+## Si aparece 403 Forbidden
+
+Si `https://tudominio.com/` devuelve una página **403 de Hostinger** (cabeceras `platform:
+hostinger`, `Server: hcdn`) y `/api/health` devuelve la página **"This Page Does Not Exist"**,
+las peticiones no están llegando a la Web App. El código no está fallando: el dominio está
+sirviendo un `public_html` vacío o le falta el `.htaccess` que redirige al proceso Node.
+
+Revisa en este orden:
+
+1. **El dominio ya existía como sitio/subdominio normal.** Hostinger exige eliminar ese sitio
+   antes de crear la Web App. Si el dominio aparece en **Websites** como sitio estático,
+   elimínalo o desvinculalo y asígnalo desde la Web App → **Domains**.
+2. **La Web App está en otro dominio.** Abre la URL temporal que muestra hPanel. Si esa URL
+   carga, el problema es solo la asignación de `tudominio.com`.
+3. **Build fallido o app detenida.** Revisa **Deployments** y **Runtime Logs**. El estado debe
+   ser **Running**.
+4. **`.htaccess` obsoleto.** Pulsa **Redeploy**: Hostinger lo regenera en `public_html`. No lo
+   edites a mano.
+5. **Ajustes de la Web App del storefront:** root `apps/web`, framework Next.js, build `build`,
+   output `.next`, entry file vacío.
+
+Para la API, el dominio debe apuntar a una Web App distinta con root `apps/api`, build
+`build:deploy`, output `dist` y entry `main.js`.
+
 ## Problemas frecuentes
 
 | Síntoma | Causa probable |
@@ -247,3 +271,5 @@ prepara el script de vuelta atrás antes de desplegar. Más detalle en [CI-CD.md
 | El catálogo muestra datos de respaldo | `API_INTERNAL_URL` inaccesible desde el servidor |
 | El checkout no abre WhatsApp | `whatsappNumber` vacío o con `+`/espacios |
 | Build falla por memoria | Compila API y Web por separado (`npm run build` en cada app) |
+| `403 Forbidden` de Hostinger | Dominio asociado a un sitio estático vacío o `.htaccess` obsoleto: reasigna el dominio a la Web App y haz Redeploy |
+| `404` con página de Hostinger | La petición no llega a la app: revisa dominio, estado de la Web App y `.htaccess` |
