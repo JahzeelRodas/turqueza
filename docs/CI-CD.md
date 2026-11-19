@@ -1,6 +1,11 @@
 # CI/CD: GitHub + Hostinger Business
 
-Flujo objetivo:
+> **Despliegue recomendado para Turquesa: una sola Web App** con `server.mjs`, que sirve el
+> storefront y la API en el mismo dominio. Guía paso a paso:
+> **[HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md)**. Las secciones 3.1 y 3.2 de este documento
+> describen la alternativa de dos Web Apps.
+
+Flujo recomendado:
 
 ```
 push a una rama / Pull Request
@@ -11,8 +16,10 @@ GitHub Actions (CI)  ── migraciones + typecheck + build ──► ✅
         ▼ merge a main
 Hostinger detecta el push (GitHub App)
         │
-        ├─► Web App API   (root: apps/api)  → build:deploy → NestJS
-        └─► Web App Web   (root: apps/web)  → build        → Next.js
+        ▼
+Web App única (root: /) → pnpm build → pnpm start → server.mjs
+                                                     ├─ /      → Next.js
+                                                     └─ /api/* → NestJS
 ```
 
 No hacen falta claves SSH ni un workflow de despliegue en GitHub: **Hostinger hace el
@@ -71,17 +78,47 @@ git push -u origin main
 
 ---
 
-## 3. Crear las dos Web Apps en Hostinger
+## 3. Crear la Web App en Hostinger
 
-Hostinger Business permite **varias Web Apps Node.js** y soporta monorepos mediante el campo
-**Root directory**. Crea una app para la API y otra para el storefront, ambas conectadas al
-mismo repositorio.
+### 3.0 Opción recomendada: una sola Web App
 
-> **Base de datos:** Hostinger Business usa **MySQL/MariaDB**. El repo ya está adaptado
-> (`provider = "mysql"`), con `images`, `tags` y `cities` como arrays JSON. Las migraciones se
-> generaron para MySQL; no las reemplaces por las antiguas de PostgreSQL.
+Hostinger expone un único proceso Node por Web App. El repo incluye `server.mjs`, que arranca
+NestJS y Next.js como procesos internos y publica `/` y `/api/*` en el mismo dominio.
 
-### 3.1 API (NestJS)
+| Campo | Valor |
+| --- | --- |
+| Repositorio | `TU_USUARIO/turquesa` · rama `main` |
+| **Root directory** | `/` (raíz del monorepo) |
+| Framework | **Other / Node.js** (no Next.js) |
+| Node.js | **22** |
+| Package manager | **pnpm** |
+| Build command | `pnpm build` (o `build`) |
+| Start command | `pnpm start` (o `node server.mjs`) |
+| Output directory | `.` (o vacío) |
+| Entry file | `server.mjs` (si el panel lo pide) |
+| Dominio | `tudominio.com` y `www.tudominio.com` |
+
+Variables principales:
+
+```env
+DATABASE_URL=mysql://usuario:password@localhost:3306/basedatos?connection_limit=5
+NODE_ENV=production
+CORS_ORIGIN=https://tudominio.com,https://www.tudominio.com
+ADMIN_EMAIL=admin@tudominio.com
+ADMIN_PASSWORD=una-contraseña-larga-y-segura
+ADMIN_NAME=Administrador
+ADMIN_JWT_SECRET=cadena-aleatoria-de-64-caracteres-minimo
+ADMIN_TOKEN_TTL_HOURS=12
+API_INTERNAL_URL=http://127.0.0.1:3001
+NEXT_PUBLIC_STORE_THEME=joyeria
+# NEXT_PUBLIC_API_URL: no la definas; el navegador usa /api en el mismo origen.
+# RUN_SEED=true solo en el primer arranque.
+```
+
+El gateway aplica `prisma migrate deploy` al arrancar. No necesitas `build:deploy` ni un
+subdominio para la API. Detalle completo: **[HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md)**.
+
+### 3.1 Opción B: API separada (NestJS)
 
 hPanel → **Websites → Add Website → Node.js web app → Connect with GitHub**:
 
@@ -118,7 +155,7 @@ ADMIN_TOKEN_TTL_HOURS=12
 
 > No definas `PORT`: Hostinger inyecta el puerto y la app ya lee `process.env.PORT`.
 
-### 3.2 Storefront (Next.js)
+### 3.2 Opción B: Storefront separado (Next.js)
 
 Repite el flujo con una segunda Web App:
 
@@ -192,13 +229,19 @@ git push -u origin feat/nueva-coleccion
 # Abre el PR → espera el check verde → merge a main
 ```
 
-El merge dispara el despliegue automático de las dos apps.
+El merge dispara el despliegue automático (una Web App con el gateway recomendado, o las dos si
+usas la opción B).
 
 ---
 
 ## 5. Verificación después del despliegue
 
 ```bash
+# Una sola Web App (recomendado)
+curl -i https://tudominio.com/api/health
+curl -I https://tudominio.com
+
+# Opción B: dos Web Apps
 curl -i https://api.tudominio.com/api/health
 curl -I https://tudominio.com
 ```
@@ -210,15 +253,17 @@ Checklist rápida:
 - [ ] El login de `/admin` funciona con las credenciales de producción.
 - [ ] Un checkout de prueba genera el enlace de WhatsApp.
 - [ ] SSL activo y `CORS_ORIGIN` con los dominios exactos.
-- [ ] **Deployments** muestra el commit esperado en ambas apps.
+- [ ] **Deployments** muestra el commit esperado.
 
 ---
 
 ## 6. Migraciones de base de datos
 
-Las migraciones versionadas viven en `apps/api/prisma/migrations/` y se aplican en el build de
-la API (`build:deploy`). El CI levanta un MySQL 8 temporal, aplica `prisma migrate deploy` y
-ejecuta el seed en cada PR para detectar SQL incompatible antes de llegar a `main`.
+Las migraciones versionadas viven en `apps/api/prisma/migrations/`. En la Web App única, el
+gateway (`server.mjs`) aplica `prisma migrate deploy` al arrancar. En la opción de dos apps, se
+aplican en el build de la API (`build:deploy`). El CI levanta un MySQL 8 temporal, aplica
+`prisma migrate deploy` y ejecuta el seed en cada PR para detectar SQL incompatible antes de
+llegar a `main`.
 
 Para crear una migración en local:
 

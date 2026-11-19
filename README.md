@@ -51,7 +51,9 @@ Bolivia** y **checkout por WhatsApp**.
 │        ├─ store/cart.ts         # Zustand
 │        └─ types/store.ts        # Contratos compartidos
 │
-├─ docs/HOSTINGER.md              # Despliegue nativo paso a paso
+├─ server.mjs                     # Gateway para una sola Web App en Hostinger
+├─ docs/HOSTINGER-UNA-APP.md      # Despliegue recomendado (una Web App)
+├─ docs/HOSTINGER.md              # Alternativa: API + Web separadas
 ├─ nginx/default.conf             # Proxy opcional (solo si usas VPS/Docker)
 ├─ docker-compose.yml             # Stack opcional de desarrollo local
 └─ pnpm-workspace.yaml
@@ -95,12 +97,16 @@ pnpm dev
 | --- | --- |
 | `pnpm dev` | API y Web en paralelo |
 | `pnpm build` | Build de API + Web |
+| `pnpm start` | Gateway de producción (API + Web en un solo puerto) |
 | `pnpm start:api` | API en producción (`node dist/main.js`) |
 | `pnpm start:web` | Next.js en producción (respeta `PORT`) |
 | `pnpm db:migrate` | Migración de desarrollo |
 | `pnpm db:migrate:deploy` | Migraciones en producción |
 | `pnpm db:seed` | Datos iniciales de joyería + envíos Bolivia |
 | `pnpm typecheck` | TypeScript en todo el monorepo |
+
+> En Hostinger, la Web App única usa `pnpm build` + `pnpm start`: `server.mjs` publica `/` y
+> `/api/*` en el mismo dominio. Ver [docs/HOSTINGER-UNA-APP.md](docs/HOSTINGER-UNA-APP.md).
 
 ## API
 

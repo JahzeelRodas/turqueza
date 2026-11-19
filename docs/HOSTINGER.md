@@ -1,6 +1,11 @@
 # Despliegue en Hostinger Business (Node.js nativo)
 
-Arquitectura objetivo: **dos aplicaciones Node.js** en el mismo hosting.
+> **Para Turquesa usa la guía de una sola Web App:**
+> **[HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md)**. El repo incluye `server.mjs`, que publica el
+> storefront y la API en el mismo dominio y evita crear `api.tudominio.com`. La guía de esta
+> página describe la **alternativa de dos Web Apps** (API y storefront separados).
+
+## Opción B: dos aplicaciones Node.js
 
 ```
 https://tudominio.com       -> apps/web  (Next.js, puerto asignado por Hostinger)
@@ -11,9 +16,9 @@ https://api.tudominio.com   -> apps/api  (NestJS, puerto asignado por Hostinger)
 
 No se usan contenedores. Cada app se instala y compila en su propio directorio.
 
-> **Flujo recomendado:** conecta el repositorio de GitHub a dos Web Apps Node.js (una para
-> `apps/api` y otra para `apps/web`) usando **Root directory**. Hostinger reconstruye y despliega
-> automáticamente en cada push a `main`, mientras GitHub Actions valida el código. Guía completa:
+> Conecta el repositorio de GitHub a dos Web Apps Node.js (una para `apps/api` y otra para
+> `apps/web`) usando **Root directory**. Hostinger reconstruye y despliega automáticamente en
+> cada push a `main`, mientras GitHub Actions valida el código. Guía completa:
 > **[CI-CD.md](CI-CD.md)**.
 
 ---
@@ -256,8 +261,9 @@ Revisa en este orden:
    ser **Running**.
 4. **`.htaccess` obsoleto.** Pulsa **Redeploy**: Hostinger lo regenera en `public_html`. No lo
    edites a mano.
-5. **Ajustes de la Web App del storefront:** root `apps/web`, framework Next.js, build `build`,
-   output `.next`, entry file vacío.
+5. **Ajustes de la Web App:** si usas la guía de una sola app, root `/`, framework
+   **Other / Node.js**, build `pnpm build` y start `pnpm start`; si usas dos apps, root
+   `apps/web`, framework Next.js, build `build`, output `.next` y entry vacío.
 
 Para la API, el dominio debe apuntar a una Web App distinta con root `apps/api`, build
 `build:deploy`, output `dist` y entry `main.js`.
