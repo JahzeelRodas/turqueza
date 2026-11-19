@@ -54,16 +54,29 @@ hPanel → **Websites → Add Website → Node.js web app → Connect with GitHu
 | Build command | `build` (script de `package.json`; si el panel acepta el comando completo, `pnpm build`) |
 | Start command | `pnpm start` (o entry file `server.mjs` / `node server.mjs`) |
 | Output directory | `.` (o vacío) |
-| Entry file | `server.mjs` (si el panel lo pide) |
+| Entry file | `server.mjs` (**obligatorio**) |
 | Dominio | `turqueza.rovelbots.com` y `www.turqueza.rovelbots.com` |
 
 `pnpm build` compila la API (`apps/api/dist`) y el storefront (`apps/web/.next`).
-`pnpm start` ejecuta el gateway, que espera a que ambos servicios estén listos antes de abrir el
-puerto público.
+`pnpm start` ejecuta el gateway, que abre el puerto público de inmediato y luego espera a que
+ambos servicios estén listos.
 
 > **Importante:** el framework debe ser **Other / Node.js**. Con el preset **Next.js**,
 > Hostinger ignora el comando de inicio y arranca solo el servidor standalone de Next; en ese caso
 > `/api/*` no llegaría a NestJS.
+>
+> **Entry file es obligatorio.** Si queda vacío, el build termina en verde pero Hostinger marca
+> `Mode: publish`, sirve `public_html` como sitio estático y el dominio devuelve `403`
+> (o la página *Coming soon* de Hostinger). El log del deploy lo delata:
+>
+> ```
+> Build command:      pnpm run build
+> Output directory:   none
+> Entry file:         none
+> Mode:               publish
+> ```
+>
+> Con `Entry file: server.mjs` el log debe mostrar `Mode: run` y, al final, las líneas del gateway.
 
 ---
 
@@ -132,16 +145,20 @@ curl -i https://turqueza.rovelbots.com/api/products
 
 `server.mjs`:
 
-1. Resuelve las rutas de Prisma y Next dentro del monorepo.
-2. Ejecuta `prisma migrate deploy` (salvo `RUN_MIGRATIONS=false`).
-3. Opcionalmente ejecuta el seed (`RUN_SEED=true`).
-4. Arranca `node apps/api/dist/main.js` en `127.0.0.1:3001`.
-5. Arranca `next start` en `127.0.0.1:3000`.
-6. Espera a que ambos puertos respondan.
-7. Publica un proxy en `0.0.0.0:$PORT`:
+1. Abre el puerto público (`0.0.0.0:$PORT`) antes de arrancar nada, para que el proxy nunca
+   devuelva `403`.
+2. Resuelve las rutas de Prisma y Next dentro del monorepo.
+3. Ejecuta `prisma migrate deploy` (salvo `RUN_MIGRATIONS=false`).
+4. Opcionalmente ejecuta el seed (`RUN_SEED=true`).
+5. Arranca `node apps/api/dist/main.js` en `127.0.0.1:3001`.
+6. Arranca `next start` en `127.0.0.1:3000`.
+7. Espera a que ambos puertos respondan.
+8. Enruta en el puerto público:
    - `/api` y `/api/*` → NestJS.
+   - `/__gateway/health` → estado del gateway (JSON).
    - Todo lo demás → Next.js.
-8. Si un proceso hijo muere, cierra el gateway para que Hostinger lo reinicie.
+9. Si un proceso hijo muere, el gateway sigue vivo y responde `503` con el motivo, en lugar de
+   dejar un `403` opaco. El estado completo está en `/__gateway/health`.
 
 ---
 
@@ -149,8 +166,10 @@ curl -i https://turqueza.rovelbots.com/api/products
 
 | Síntoma | Causa / solución |
 | --- | --- |
-| `403 Forbidden` con página de Hostinger | El dominio sigue asignado a un sitio estático vacío o el `.htaccess` está obsoleto. Elimina el sitio anterior, asigna el dominio a la Web App y pulsa **Redeploy**. |
+| `403 Forbidden` con página de Hostinger | El dominio sigue asignado a un sitio estático vacío, el `.htaccess` está obsoleto o **`Entry file` está vacío (modo `publish`)**. Revisa el log del deploy: si dice `Mode: publish`, pon `Entry file: server.mjs`. |
+| `200` con la página *Coming soon* de Hostinger | Mismo caso: modo `publish`. El dominio sirve `public_html`, no la Web App. |
 | `404` con página de Hostinger | La petición no llega a la app: revisa dominio, estado **Running** y `.htaccess`. |
+| `503` con "La tienda se está iniciando" | El gateway está vivo pero la API o Next no arrancaron. Abre `/__gateway/health` y los **Runtime Logs**. |
 | `No existe ...apps/api/dist/main.js` | El build no compiló la API. Usa root `/` y build `pnpm build`. |
 | `No se encontró Next.js` / `Prisma` | Faltan dependencias. Fuerza un redeploy con `pnpm install`. |
 | `Prisma migrate deploy falló` | `DATABASE_URL` incorrecta, usuario sin permisos o MySQL no accesible desde el servidor. |

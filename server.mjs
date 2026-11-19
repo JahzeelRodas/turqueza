@@ -2,15 +2,20 @@
  * Gateway de producción para Hostinger.
  *
  * Hostinger expone un único proceso Node por Web App. Este proceso:
- *   1. aplica las migraciones de Prisma,
- *   2. arranca NestJS en 127.0.0.1:3001,
- *   3. arranca Next.js en 127.0.0.1:3000,
- *   4. publica un proxy en el puerto que asigna Hostinger (process.env.PORT).
+ *   1. abre el puerto público de inmediato (para que el proxy nunca devuelva 403),
+ *   2. aplica las migraciones de Prisma,
+ *   3. arranca NestJS en 127.0.0.1:3001,
+ *   4. arranca Next.js en 127.0.0.1:3000,
+ *   5. enruta /api/* a NestJS y el resto a Next.js.
+ *
+ * Si algo falla, el proceso sigue vivo y responde 503 con el motivo real en
+ * lugar de dejar que Hostinger muestre un 403 sin información. El estado se
+ * puede consultar en /__gateway/health.
  *
  * El navegador llama a /api en el mismo origen, así que no hace falta un
  * subdominio para la API ni configurar CORS entre dominios distintos.
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -31,7 +36,7 @@ const WEB_PORT =
   Number(process.env.WEB_INTERNAL_PORT) || (PUBLIC_PORT === 3000 ? 3100 : 3000);
 const API_PORT =
   Number(process.env.API_INTERNAL_PORT) || (PUBLIC_PORT === 3001 ? 3101 : 3001);
-const READY_TIMEOUT_MS = 90_000;
+const READY_TIMEOUT_MS = 120_000;
 
 if (WEB_PORT === API_PORT) {
   console.error('[gateway] WEB_INTERNAL_PORT y API_INTERNAL_PORT no pueden ser iguales.');
@@ -62,19 +67,35 @@ const prismaCli = [
   path.join(ROOT, 'node_modules', 'prisma', 'build', 'index.js'),
 ].find((candidate) => existsSync(candidate));
 
+const state = {
+  startedAt: new Date().toISOString(),
+  ready: false,
+  migrations: 'pending',
+  seed: process.env.RUN_SEED === 'true' ? 'pending' : 'skipped',
+  api: { port: API_PORT, status: 'pending', detail: null },
+  web: { port: WEB_PORT, status: 'pending', detail: null },
+  fatal: null,
+};
+
+/**
+ * Errores de arranque que no dependen de los procesos hijos. Se informan por
+ * HTTP en vez de terminar el proceso, para que el problema sea visible.
+ */
+function setFatal(message) {
+  state.fatal = message;
+  console.error(`[gateway] ${message}`);
+}
+
 if (!existsSync(API_ENTRY)) {
-  console.error(`[gateway] No existe ${API_ENTRY}. Ejecuta "pnpm build" antes de arrancar.`);
-  process.exit(1);
+  setFatal(`No existe ${API_ENTRY}. El build de la API no se copió al runtime.`);
 }
 
 if (!nextCli) {
-  console.error('[gateway] No se encontró Next.js en apps/web. Ejecuta "pnpm install".');
-  process.exit(1);
+  setFatal('No se encontró Next.js en apps/web. Ejecuta "pnpm install".');
 }
 
 if (!prismaCli) {
-  console.error('[gateway] No se encontró Prisma en apps/api. Ejecuta "pnpm install".');
-  process.exit(1);
+  setFatal('No se encontró Prisma. Ejecuta "pnpm install" en el runtime.');
 }
 
 let server;
@@ -100,67 +121,92 @@ function canConnect(port) {
   });
 }
 
-async function waitForPort(port, name) {
+async function waitForPort(port, name, slot) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < READY_TIMEOUT_MS) {
     if (await canConnect(port)) {
+      slot.status = 'ready';
+      slot.detail = null;
       console.log(`[gateway] ${name} listo en 127.0.0.1:${port}`);
-      return;
+      return true;
     }
+    if (slot.status === 'crashed') return false;
     await sleep(500);
   }
-  throw new Error(`${name} no respondió en ${READY_TIMEOUT_MS / 1000}s`);
+  slot.status = 'timeout';
+  slot.detail = `No respondió en ${READY_TIMEOUT_MS / 1000}s`;
+  console.error(`[gateway] ${name}: ${slot.detail}`);
+  return false;
 }
 
-function runMigrations() {
+/**
+ * Ejecuta un comando de forma asíncrona para no bloquear el servidor HTTP
+ * mientras corren migraciones o el seed.
+ */
+function runCommand(args, label) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, args, {
+      cwd: API_DIR,
+      env: process.env,
+      stdio: 'inherit',
+    });
+
+    child.on('error', (error) => {
+      resolve({ ok: false, detail: error.message });
+    });
+    child.on('exit', (code, signal) => {
+      if (code === 0) {
+        resolve({ ok: true, detail: null });
+        return;
+      }
+      resolve({ ok: false, detail: `${label}: código ${code ?? 'null'} señal ${signal ?? 'null'}` });
+    });
+  });
+}
+
+async function runMigrations() {
   if (process.env.RUN_MIGRATIONS === 'false') {
+    state.migrations = 'skipped';
     console.log('[gateway] Migraciones omitidas (RUN_MIGRATIONS=false)');
     return;
   }
 
+  state.migrations = 'running';
   console.log('[gateway] Aplicando migraciones de Prisma...');
-  const result = spawnSync(
-    process.execPath,
+  const result = await runCommand(
     [prismaCli, 'migrate', 'deploy', '--schema', PRISMA_SCHEMA],
-    {
-      cwd: API_DIR,
-      env: process.env,
-      stdio: 'inherit',
-    },
+    'prisma migrate deploy',
   );
 
-  if (result.error) {
-    console.error('[gateway] No se pudo ejecutar Prisma:', result.error.message);
-    process.exit(1);
+  if (result.ok) {
+    state.migrations = 'ok';
+    console.log('[gateway] Migraciones aplicadas.');
+    return;
   }
-  if (result.status !== 0) {
-    console.error(`[gateway] Prisma migrate deploy falló (código ${result.status}).`);
-    process.exit(result.status ?? 1);
-  }
+
+  state.migrations = 'failed';
+  state.fatal = state.fatal ?? result.detail;
+  console.error(`[gateway] Migraciones fallidas: ${result.detail}`);
 }
 
-function runSeed() {
+async function runSeed() {
   if (process.env.RUN_SEED !== 'true') return;
 
+  state.seed = 'running';
   console.log('[gateway] Ejecutando seed inicial...');
-  const result = spawnSync(
-    process.execPath,
+  const result = await runCommand(
     [prismaCli, 'db', 'seed', '--schema', PRISMA_SCHEMA],
-    {
-      cwd: API_DIR,
-      env: process.env,
-      stdio: 'inherit',
-    },
+    'prisma db seed',
   );
 
-  if (result.error) {
-    console.error('[gateway] No se pudo ejecutar el seed:', result.error.message);
-    process.exit(1);
+  if (result.ok) {
+    state.seed = 'ok';
+    console.log('[gateway] Seed completado.');
+    return;
   }
-  if (result.status !== 0) {
-    console.error(`[gateway] El seed falló (código ${result.status}).`);
-    process.exit(result.status ?? 1);
-  }
+
+  state.seed = 'failed';
+  console.error(`[gateway] El seed falló: ${result.detail}`);
 }
 
 function shutdown(code = 0) {
@@ -186,9 +232,53 @@ function shutdown(code = 0) {
   }, 5_000).unref();
 }
 
+const proxyAgent = new http.Agent({ keepAlive: true, maxSockets: 64 });
+
+function sendJson(res, statusCode, payload) {
+  const body = JSON.stringify(payload, null, 2);
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function sendUnavailable(res) {
+  const detail = state.fatal ?? 'La aplicación todavía se está iniciando.';
+  const body = `<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Iniciando tienda</title>
+<style>body{font:15px/1.6 system-ui,sans-serif;max-width:640px;margin:12vh auto;padding:0 24px;color:#222}
+code{background:#f3f3f3;padding:2px 6px;border-radius:4px}</style></head>
+<body><h1>La tienda se está iniciando</h1>
+<p>El proceso Node ya está en marcha, pero la API o el frontend aún no responden.</p>
+<p>Detalle: <code>${detail.replace(/[<>&]/g, '')}</code></p>
+<p>Estado: <a href="/__gateway/health">/__gateway/health</a></p>
+<p>Esta página se actualiza sola en 10 segundos.</p>
+<script>setTimeout(function(){location.reload()},10000)</script>
+</body></html>`;
+
+  res.writeHead(503, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Retry-After': '10',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
 function forward(req, res) {
   const isApi = req.url === '/api' || req.url?.startsWith('/api/');
-  const targetPort = isApi ? API_PORT : WEB_PORT;
+  const slot = isApi ? state.api : state.web;
+  const targetPort = slot.port;
+
+  if (slot.status !== 'ready') {
+    sendUnavailable(res);
+    return;
+  }
+
   const remoteAddress = req.socket.remoteAddress ?? '127.0.0.1';
   const forwardedFor = req.headers['x-forwarded-for']
     ? `${req.headers['x-forwarded-for']}, ${remoteAddress}`
@@ -234,8 +324,9 @@ function forward(req, res) {
   proxyReq.on('error', (error) => {
     console.error(`[gateway] Error al conectar con ${isApi ? 'API' : 'Web'}:`, error.message);
     if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('La aplicación se está iniciando. Recarga en unos segundos.');
+      slot.status = 'unreachable';
+      slot.detail = error.message;
+      sendUnavailable(res);
     } else {
       res.destroy(error);
     }
@@ -244,67 +335,52 @@ function forward(req, res) {
   req.pipe(proxyReq, { end: true });
 }
 
-const proxyAgent = new http.Agent({ keepAlive: true, maxSockets: 64 });
+function handleRequest(req, res) {
+  const url = req.url ?? '/';
 
-function startChild(command, args, options, name) {
-  const child = spawn(command, args, options);
+  if (url === '/__gateway/health') {
+    sendJson(res, state.ready ? 200 : 503, {
+      ready: state.ready,
+      uptimeSeconds: Math.round(process.uptime()),
+      startedAt: state.startedAt,
+      publicPort: PUBLIC_PORT,
+      migrations: state.migrations,
+      seed: state.seed,
+      api: state.api,
+      web: state.web,
+      fatal: state.fatal,
+      node: process.version,
+    });
+    return;
+  }
+
+  if (state.fatal && state.api.status !== 'ready') {
+    sendUnavailable(res);
+    return;
+  }
+
+  forward(req, res);
+}
+
+function startChild(args, options, name, slot) {
+  const child = spawn(process.execPath, args, options);
+
   child.on('error', (error) => {
+    slot.status = 'crashed';
+    slot.detail = error.message;
     console.error(`[gateway] No se pudo arrancar ${name}:`, error.message);
-    shutdown(1);
   });
   child.on('exit', (code, signal) => {
     if (shuttingDown) return;
+    slot.status = 'crashed';
+    slot.detail = `Terminó con código ${code ?? 'null'} (señal ${signal ?? 'null'})`;
     console.error(`[gateway] ${name} terminó (código ${code ?? 'null'}, señal ${signal ?? 'null'}).`);
-    shutdown(code && code !== 0 ? code : 1);
   });
+
   return child;
 }
 
-runMigrations();
-runSeed();
-
-console.log('[gateway] Arrancando API y Web...');
-apiProc = startChild(
-  process.execPath,
-  [API_ENTRY],
-  {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: process.env.NODE_ENV ?? 'production',
-      PORT: String(API_PORT),
-    },
-    stdio: 'inherit',
-  },
-  'API',
-);
-
-webProc = startChild(
-  process.execPath,
-  [nextCli, 'start', '-p', String(WEB_PORT)],
-  {
-    cwd: WEB_DIR,
-    env: {
-      ...process.env,
-      NODE_ENV: process.env.NODE_ENV ?? 'production',
-      PORT: String(WEB_PORT),
-      // Next usa esta URL en Server Components/build; el navegador usa /api.
-      API_INTERNAL_URL: `http://127.0.0.1:${API_PORT}`,
-    },
-    stdio: 'inherit',
-  },
-  'Web',
-);
-
-try {
-  await Promise.all([waitForPort(API_PORT, 'API'), waitForPort(WEB_PORT, 'Web')]);
-} catch (error) {
-  console.error('[gateway]', error.message);
-  shutdown(1);
-  process.exit(1);
-}
-
-server = http.createServer(forward);
+server = http.createServer(handleRequest);
 server.keepAliveTimeout = 65_000;
 server.headersTimeout = 66_000;
 
@@ -313,9 +389,67 @@ server.on('error', (error) => {
   shutdown(1);
 });
 
+// El puerto público se abre antes de arrancar nada: el proxy de Hostinger tiene
+// un upstream válido desde el primer segundo.
 server.listen(PUBLIC_PORT, '0.0.0.0', () => {
   console.log(`[gateway] Escuchando en 0.0.0.0:${PUBLIC_PORT} (Web:${WEB_PORT}, API:${API_PORT})`);
 });
+
+async function boot() {
+  if (state.fatal) {
+    console.error(`[gateway] Arranque incompleto: ${state.fatal}`);
+    return;
+  }
+
+  await runMigrations();
+  await runSeed();
+
+  console.log('[gateway] Arrancando API y Web...');
+  apiProc = startChild(
+    [API_ENTRY],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        NODE_ENV: process.env.NODE_ENV ?? 'production',
+        PORT: String(API_PORT),
+      },
+      stdio: 'inherit',
+    },
+    'API',
+    state.api,
+  );
+
+  webProc = startChild(
+    [nextCli, 'start', '-p', String(WEB_PORT)],
+    {
+      cwd: WEB_DIR,
+      env: {
+        ...process.env,
+        NODE_ENV: process.env.NODE_ENV ?? 'production',
+        PORT: String(WEB_PORT),
+        // Next usa esta URL en Server Components/build; el navegador usa /api.
+        API_INTERNAL_URL: `http://127.0.0.1:${API_PORT}`,
+      },
+      stdio: 'inherit',
+    },
+    'Web',
+    state.web,
+  );
+
+  const [apiReady, webReady] = await Promise.all([
+    waitForPort(API_PORT, 'API', state.api),
+    waitForPort(WEB_PORT, 'Web', state.web),
+  ]);
+
+  if (apiReady && webReady) {
+    state.ready = true;
+    console.log('[gateway] Aplicación lista.');
+  } else {
+    state.fatal = state.fatal ?? 'La API o el frontend no llegaron a iniciar. Revisa los logs.';
+    console.error(`[gateway] ${state.fatal}`);
+  }
+}
 
 process.on('SIGTERM', () => shutdown(0));
 process.on('SIGINT', () => shutdown(0));
@@ -327,3 +461,5 @@ process.on('unhandledRejection', (error) => {
   console.error('[gateway] Promesa rechazada sin controlar:', error);
   shutdown(1);
 });
+
+await boot();
