@@ -23,12 +23,27 @@ jobs:
     timeout-minutes: 20
 
     env:
-      # Valores ficticios: el CI no se conecta a ninguna base de datos.
-      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci?connection_limit=5
       NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
       API_INTERNAL_URL: http://127.0.0.1:3001
       NEXT_PUBLIC_STORE_THEME: joyeria
       NEXT_TELEMETRY_DISABLED: 1
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: ci
+          MYSQL_USER: ci
+          MYSQL_PASSWORD: ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uci -pci --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
 
     steps:
       - name: Checkout
@@ -48,10 +63,12 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
-      - name: Generar y validar Prisma
+      - name: Generar, validar y aplicar migraciones
         run: |
           pnpm db:generate
           pnpm --filter api exec prisma validate
+          pnpm --filter api exec prisma migrate deploy
+          pnpm --filter api exec prisma db seed
 
       - name: Typecheck
         run: pnpm typecheck

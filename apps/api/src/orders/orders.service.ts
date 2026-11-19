@@ -254,10 +254,10 @@ export class OrdersService {
       const search = params.search.trim();
       and.push({
         OR: [
-          { orderNumber: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search, mode: 'insensitive' } },
-          { customerName: { contains: search, mode: 'insensitive' } },
-          { phone: { contains: search, mode: 'insensitive' } },
+          { orderNumber: { contains: search } },
+          { email: { contains: search } },
+          { customerName: { contains: search } },
+          { phone: { contains: search } },
         ],
       });
     }

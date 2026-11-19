@@ -54,8 +54,8 @@ export class ProductsService {
       ...(search
         ? {
             OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { description: { contains: search, mode: 'insensitive' } },
+              { name: { contains: search } },
+              { description: { contains: search } },
             ],
           }
         : {}),
@@ -105,12 +105,11 @@ export class ProductsService {
       const search = params.search.trim();
       and.push({
         OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { slug: { contains: search, mode: 'insensitive' } },
-          { subtitle: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { tags: { has: search } },
-          { variants: { some: { sku: { contains: search, mode: 'insensitive' } } } },
+          { name: { contains: search } },
+          { slug: { contains: search } },
+          { subtitle: { contains: search } },
+          { description: { contains: search } },
+          { variants: { some: { sku: { contains: search } } } },
         ],
       });
     }
@@ -162,6 +161,9 @@ export class ProductsService {
         data: {
           ...data,
           slug: data.slug?.trim() || (await this.uniqueSlug(slugify(data.name))),
+          // MySQL no tiene arrays escalares: se persisten como JSON.
+          images: (data.images ?? []) as Prisma.InputJsonValue,
+          tags: (data.tags ?? []) as Prisma.InputJsonValue,
           categoryId: data.categoryId || null,
           metadata: (data.metadata ?? {}) as Prisma.InputJsonValue,
           attributes: (data.attributes ?? {}) as Prisma.InputJsonValue,
@@ -375,11 +377,11 @@ export class ProductsService {
           price: source.price,
           compareAtPrice: source.compareAtPrice,
           currency: source.currency,
-          images: source.images,
+          images: source.images as Prisma.InputJsonValue,
           status: ProductStatus.DRAFT,
           isFeatured: false,
           stock: source.stock,
-          tags: source.tags,
+          tags: source.tags as Prisma.InputJsonValue,
           metadata: source.metadata as Prisma.InputJsonValue,
           attributes: source.attributes as Prisma.InputJsonValue,
           engraving: source.engraving

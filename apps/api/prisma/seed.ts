@@ -2,7 +2,7 @@
  * Por defecto carga datos de ejemplo del rubro "joyería" (caso de uso inicial),
  * con envíos nacionales a los 9 departamentos de Bolivia y checkout por WhatsApp.
  *
- * Toda la estructura (Product + variants + metadata JSONB) es genérica:
+ * Toda la estructura (Product + variants + metadata JSON) es genérica:
  * para otro sector basta con cambiar los datos y el tema visual, no el schema.
  *
  * Ejecutar: pnpm db:seed
@@ -210,7 +210,7 @@ const categories = [
   { name: 'Brazaletes', slug: 'brazaletes', imageUrl: img('photo-1611591437281-460bfbe1220a'), position: 4 },
 ];
 
-/* ── Configuración del grabado láser (JSONB reutilizable) ───────────────── */
+/* ── Configuración del grabado láser (JSON reutilizable) ────────────────── */
 const engravingConfig = {
   enabled: true,
   price: 5_000,
@@ -226,7 +226,7 @@ const engravingConfig = {
   ],
 };
 
-/* ── Productos (metadata JSONB = atributos dinámicos del rubro) ──────────── */
+/* ── Productos (metadata JSON = atributos dinámicos del rubro) ───────────── */
 const products = [
   {
     slug: 'anillo-solitario-aurora',

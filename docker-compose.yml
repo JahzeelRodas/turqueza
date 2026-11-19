@@ -1,15 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────
 # Stack de despliegue para VPS Ubuntu: Nginx (proxy inverso) →
-# Web (Next.js) + API (NestJS) → PostgreSQL. Ejecutar: docker compose up -d --build
+# Web (Next.js) + API (NestJS) → MySQL. Ejecutar: docker compose up -d --build
 #
 # Antes de arrancar define en un .env junto a este archivo:
-#   POSTGRES_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD y ADMIN_JWT_SECRET.
+#   MYSQL_ROOT_PASSWORD, MYSQL_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD y ADMIN_JWT_SECRET.
 # El arranque falla de forma explícita si faltan, para no usar credenciales demo.
 # ─────────────────────────────────────────────────────────────────────
 name: ecommerce-platform
 
 x-api-env: &api-env
-  DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en el .env}@db:5432/${POSTGRES_DB:-store}?schema=public"
+  DATABASE_URL: "mysql://${MYSQL_USER:-store}:${MYSQL_PASSWORD:?Define MYSQL_PASSWORD en el .env}@db:3306/${MYSQL_DATABASE:-store}?connection_limit=5"
   PORT: 3001
   NODE_ENV: production
   ADMIN_EMAIL: "${ADMIN_EMAIL:?Define ADMIN_EMAIL en el .env}"
@@ -21,16 +21,18 @@ x-api-env: &api-env
 services:
   # ── Base de datos transaccional ──────────────────────────────────────
   db:
-    image: postgres:16-alpine
+    image: mysql:8.0
     restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en el .env}"
-      POSTGRES_DB: ${POSTGRES_DB:-store}
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en el .env}"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-store}
+      MYSQL_USER: ${MYSQL_USER:-store}
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?Define MYSQL_PASSWORD en el .env}"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-store}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
       interval: 5s
       timeout: 5s
       retries: 12

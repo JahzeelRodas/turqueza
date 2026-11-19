@@ -13,7 +13,7 @@ import type {
  *
  * El storefront funciona incluso si la API aún no está levantada (primer deploy,
  * migraciones pendientes o caída temporal). En producción la fuente de verdad
- * siempre es PostgreSQL a través de la API NestJS.
+ * siempre es MySQL a través de la API NestJS.
  */
 
 const img = (id: string, w = 1600) =>

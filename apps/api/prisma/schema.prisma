@@ -1,12 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Plataforma e-commerce headless · PostgreSQL + Prisma
+// Plataforma e-commerce headless · MySQL + Prisma
 //
 // Diseño "agnóstico al rubro":
-//  · `metadata` (JSONB)  → atributos dinámicos propios de cada sector.
+//  · `metadata` (JSON)  → atributos dinámicos propios de cada sector.
 //    Ej. joyería: { material, piedra, quilates } · ropa: { talla, color }.
-//  · `attributes` (JSONB) → flags/config del producto para la UI:
+//  · `attributes` (JSON) → flags/config del producto para la UI:
 //    { badges: string[], hasSizeGuide: boolean, ... }.
-//  · `engraving` (JSONB) → configuración del asistente de grabado por producto:
+//  · `engraving` (JSON) → configuración del asistente de grabado por producto:
 //    { enabled, price, maxChars, fonts: [...], placements: [...] }.
 //  · `variants`          → SKUs concretos con stock y precio override.
 //  · `StoreConfig`       → tema visual + layout de bloques (JSON) por tienda.
@@ -15,10 +15,11 @@
 // El checkout de WhatsApp vive en el storefront; la API expone la orden y
 // `whatsappUrl` ya formateada (ver apps/api/src/common/whatsapp.ts).
 //
-// NOTA (índice GIN): PostgreSQL soporta índices GIN sobre JSONB que aceleran
-// consultas @>, ->>. Prisma no lo declara nativamente; añádelo en la migración:
-//   CREATE INDEX "Product_metadata_gin" ON "Product" USING GIN ("metadata");
-//   CREATE INDEX "OrderItem_engraving_gin" ON "OrderItem" USING GIN ("engraving");
+// NOTA (MySQL): no existen arrays escalares ni `JsonB`. `images`, `tags` y
+// `cities` se guardan como arrays JSON y la API los normaliza a `string[]`.
+// MySQL no permite índices GIN: para búsquedas intensivas sobre JSON usa
+// columnas generadas o full-text; el catálogo actual filtra por columnas
+// relacionales normales.
 // ─────────────────────────────────────────────────────────────────────────
 
 generator client {
@@ -26,7 +27,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -53,7 +54,7 @@ model Category {
   id          String     @id @default(cuid())
   name        String
   slug        String     @unique
-  description String?
+  description String?    @db.Text
   imageUrl    String?
   position    Int        @default(0)
   isActive    Boolean    @default(true)
@@ -63,8 +64,8 @@ model Category {
   children    Category[] @relation("CategoryTree")
 
   products  Product[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([parentId])
 }
@@ -74,26 +75,28 @@ model Product {
   slug           String        @unique
   name           String
   subtitle       String?
-  description    String?
+  description    String?       @db.Text
   // Dinero en céntimos (evita floats); p.ej. 129000 = 1.290,00 Bs
   price          Int
-  compareAtPrice Int?          // precio tachado para ofertas
+  compareAtPrice Int? // precio tachado para ofertas
   currency       String        @default("BOB")
-  images         String[]      @default([])
+  /// Array JSON de URLs (MySQL no soporta String[]).
+  images         Json
   status         ProductStatus @default(DRAFT)
   isFeatured     Boolean       @default(false)
   stock          Int           @default(0)
-  tags           String[]      @default([])
+  /// Array JSON de etiquetas.
+  tags           Json
 
-  /// Atributos dinámicos del rubro (JSONB): material, talla, quilates, color...
-  metadata Json @db.JsonB
-  /// Flags de UI para la ficha de producto (JSONB): { badges, hasSizeGuide }
-  attributes Json @db.JsonB
-  /// Configuración del grabado láser (JSONB). null = no personalizable.
-  engraving Json? @db.JsonB
+  /// Atributos dinámicos del rubro (JSON): material, talla, quilates, color...
+  metadata   Json
+  /// Flags de UI para la ficha de producto (JSON): { badges, hasSizeGuide }
+  attributes Json
+  /// Configuración del grabado láser (JSON). null = no personalizable.
+  engraving  Json?
 
   categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category   Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   variants   ProductVariant[]
 
   cartItems  CartItem[]
@@ -111,17 +114,17 @@ model ProductVariant {
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  sku     String  @unique
-  name    String // "Anillo Aurora · Oro rosa · 52"
-  price   Int? // si es null usa Product.price (override)
+  sku            String  @unique
+  name           String // "Anillo Aurora · Oro rosa · 52"
+  price          Int? // si es null usa Product.price (override)
   compareAtPrice Int? // precio original de la variante para ofertas
-  stock   Int     @default(0)
-  isActive Boolean @default(true)
-  position Int     @default(0)
-  imageUrl String?
+  stock          Int     @default(0)
+  isActive       Boolean @default(true)
+  position       Int     @default(0)
+  imageUrl       String?
 
-  /// Opciones dinámicas (JSONB): { talla: "52" } / { color: "Negro" }
-  options Json @db.JsonB
+  /// Opciones dinámicas (JSON): { talla: "52" } / { color: "Negro" }
+  options Json
 
   cartItems  CartItem[]
   orderItems OrderItem[]
@@ -132,32 +135,32 @@ model ProductVariant {
 // ── Carrito (persistencia opcional; el storefront también soporta localStorage) ──
 
 model Cart {
-  id        String  @id @default(cuid())
-  token     String  @unique // cookie/sessionId anónimo
+  id        String    @id @default(cuid())
+  token     String    @unique // cookie/sessionId anónimo
   email     String?
-  currency  String  @default("BOB")
+  currency  String    @default("BOB")
   expiresAt DateTime?
 
   items     CartItem[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@index([token])
 }
 
 model CartItem {
-  id        String  @id @default(cuid())
-  cartId    String
-  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
 
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   variantId String?
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
-  quantity Int @default(1)
-  /// Especificaciones del grabado (JSONB): { enabled, text, font, placement, price }
-  engraving Json? @db.JsonB
+  quantity  Int   @default(1)
+  /// Especificaciones del grabado (JSON): { enabled, text, font, placement, price }
+  engraving Json?
 
   @@index([cartId])
 }
@@ -165,15 +168,16 @@ model CartItem {
 // ── Envíos nacionales (Bolivia) ────────────────────────────────────────────
 
 model ShippingZone {
-  id           String  @id @default(cuid())
-  code         String  @unique // "LP", "SC", ...
-  department   String  @unique // "La Paz", "Santa Cruz", ...
-  cities       String[] @default([])
-  price        Int // céntimos de BOB
+  id            String  @id @default(cuid())
+  code          String  @unique // "LP", "SC", ...
+  department    String  @unique // "La Paz", "Santa Cruz", ...
+  /// Array JSON de ciudades (MySQL no soporta String[]).
+  cities        Json
+  price         Int // céntimos de BOB
   freeThreshold Int? // subtotal mínimo para envío gratis (céntimos)
-  estimatedDays String @default("2-4 días hábiles")
-  isActive     Boolean @default(true)
-  position     Int     @default(0)
+  estimatedDays String  @default("2-4 días hábiles")
+  isActive      Boolean @default(true)
+  position      Int     @default(0)
 
   orders Order[]
 
@@ -186,15 +190,15 @@ model ShippingZone {
 // ── Pedidos ────────────────────────────────────────────────────────────────
 
 model Order {
-  id          String      @id @default(cuid())
-  orderNumber String      @unique
-  email       String
+  id           String  @id @default(cuid())
+  orderNumber  String  @unique
+  email        String
   customerName String
-  phone       String?
-  notes       String?
+  phone        String?
+  notes        String? @db.Text
 
-  /// Snapshot de la dirección de envío (JSONB): fullName, line1, city, department...
-  shippingAddress Json        @db.JsonB
+  /// Snapshot de la dirección de envío (JSON): fullName, line1, city, department...
+  shippingAddress Json
   status          OrderStatus @default(PENDING)
 
   /// Departamento de envío (snapshot legible) + zona usada para el costo
@@ -203,17 +207,17 @@ model Order {
   shippingZone       ShippingZone? @relation(fields: [shippingZoneId], references: [id], onDelete: SetNull)
 
   // Dinero en céntimos
-  subtotal   Int
-  shipping   Int   @default(0)
-  total      Int
-  currency   String @default("BOB")
+  subtotal Int
+  shipping Int    @default(0)
+  total    Int
+  currency String @default("BOB")
 
   /// Mensaje exacto enviado a WhatsApp (auditoría del checkout)
   whatsappMessage String? @db.Text
 
   items     OrderItem[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@index([status])
   @@index([shippingZoneId])
@@ -221,28 +225,28 @@ model Order {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   // Opcionales: el pedido conserva el snapshot aunque se borre el producto
   productId String?
   product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   variantId String?
-  variant   ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   // Snapshot del producto vendido
-  name        String
-  sku         String
-  unitPrice   Int
-  quantity    Int
-  total       Int
-  /// Opciones del variant compradas (JSONB): { talla: "52" }
-  options Json @db.JsonB
+  name      String
+  sku       String
+  unitPrice Int
+  quantity  Int
+  total     Int
+  /// Opciones del variant compradas (JSON): { talla: "52" }
+  options   Json
 
-  /// Especificaciones exactas del grabado láser (JSONB):
+  /// Especificaciones exactas del grabado láser (JSON):
   /// { enabled, text, font, placement, price }
-  engraving Json? @db.JsonB
+  engraving Json?
 
   @@index([orderId])
 }
@@ -250,23 +254,23 @@ model OrderItem {
 // ── Configuración de tienda (singleton) ───────────────────────────────────
 
 model StoreConfig {
-  id         String  @id @default("singleton")
-  storeName  String
-  tagline    String?
-  domain     String? @unique
-  currency   String  @default("BOB")
-  locale     String  @default("es-BO")
-  country    String  @default("Bolivia")
+  id             String  @id @default("singleton")
+  storeName      String
+  tagline        String?
+  domain         String? @unique
+  currency       String  @default("BOB")
+  locale         String  @default("es-BO")
+  country        String  @default("Bolivia")
   /// WhatsApp de la joyería en formato internacional sin "+" (ej. 59171234567)
   whatsappNumber String?
   /// ID del tema visual activo (registro de temas en apps/web/src/config/store-theme.ts)
-  themeId    String  @default("joyeria")
+  themeId        String  @default("joyeria")
 
-  /// JSONB: navegación/mega menú, footer, sellos de confianza y layout de bloques
-  navigation Json     @db.JsonB
-  footer     Json     @db.JsonB
-  valueProps Json     @db.JsonB
-  homeLayout Json     @db.JsonB
+  /// JSON: navegación/mega menú, footer, sellos de confianza y layout de bloques
+  navigation Json
+  footer     Json
+  valueProps Json
+  homeLayout Json
 
   updatedAt DateTime @updatedAt
 }

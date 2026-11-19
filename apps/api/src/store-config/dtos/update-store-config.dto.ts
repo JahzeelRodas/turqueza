@@ -28,7 +28,7 @@ function IsObjectOrArray(options?: ValidationOptions) {
 }
 
 /**
- * JSONB configurables de la tienda: navegación, footer, sellos de confianza
+ * JSON configurables de la tienda: navegación, footer, sellos de confianza
  * y layout de bloques del home. Se validan como JSON genérico (schema-less
  * por diseño) y los alimenta un panel admin/CMS en el roadmap.
  */

@@ -30,25 +30,35 @@ export class ShippingService {
    */
   async resolve(params: { code?: string; department?: string; city?: string }) {
     const { code, department, city } = params;
+    // La tabla tiene 9 filas: resolver en memoria evita filtros JSON y
+    // `mode: 'insensitive'`, que MySQL no soporta igual que PostgreSQL.
+    const zones = await this.prisma.shippingZone.findMany({
+      where: { isActive: true },
+    });
 
     if (code) {
-      const byCode = await this.prisma.shippingZone.findFirst({
-        where: { code, isActive: true },
-      });
+      const normalized = code.trim().toLowerCase();
+      const byCode = zones.find((zone) => zone.code.trim().toLowerCase() === normalized);
       if (byCode) return byCode;
     }
 
     if (department) {
-      const byDepartment = await this.prisma.shippingZone.findFirst({
-        where: { department: { equals: department, mode: 'insensitive' }, isActive: true },
-      });
+      const normalized = department.trim().toLowerCase();
+      const byDepartment = zones.find(
+        (zone) => zone.department.trim().toLowerCase() === normalized,
+      );
       if (byDepartment) return byDepartment;
     }
 
     if (city) {
-      return this.prisma.shippingZone.findFirst({
-        where: { cities: { has: city }, isActive: true },
-      });
+      const normalized = city.trim().toLowerCase();
+      return (
+        zones.find((zone) =>
+          toStringArray(zone.cities).some(
+            (candidate) => candidate.trim().toLowerCase() === normalized,
+          ),
+        ) ?? null
+      );
     }
 
     return null;
@@ -131,6 +141,12 @@ export class ShippingService {
     const count = await this.prisma.shippingZone.count({ where: { id } });
     if (!count) throw new NotFoundException('Zona de envío no encontrada');
   }
+}
+
+/** `cities` es JSON en MySQL; normaliza a `string[]` de forma segura. */
+function toStringArray(value: Prisma.JsonValue | null | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function uniqueError(error: unknown) {

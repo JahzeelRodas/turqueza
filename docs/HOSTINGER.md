@@ -6,7 +6,7 @@ Arquitectura objetivo: **dos aplicaciones Node.js** en el mismo hosting.
 https://tudominio.com       -> apps/web  (Next.js, puerto asignado por Hostinger)
 https://api.tudominio.com   -> apps/api  (NestJS, puerto asignado por Hostinger)
                                   |
-                                  +-> PostgreSQL de Hostinger
+                                  +-> MySQL de Hostinger
 ```
 
 No se usan contenedores. Cada app se instala y compila en su propio directorio.
@@ -20,29 +20,26 @@ No se usan contenedores. Cada app se instala y compila en su propio directorio.
 
 ## 1. Base de datos
 
-1. hPanel → **Bases de datos → PostgreSQL** (o MySQL si tu plan solo ofrece MySQL).
+Hostinger Business ofrece **MySQL/MariaDB**. El schema de Prisma ya está configurado con
+`provider = "mysql"`; no hay que cambiarlo.
+
+1. hPanel → **Bases de datos → MySQL**.
 2. Crea una base y un usuario con permisos totales.
-3. Anota el **host**, puerto, nombre de base, usuario y contraseña.
-4. Si usas MySQL, cambia en `apps/api/prisma/schema.prisma`:
-
-   ```prisma
-   datasource db {
-     provider = "mysql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-
-   > El schema usa `String[]`, `Json @db.JsonB` y `@db.Text`, específicos de PostgreSQL.
-   > Para MySQL hay que adaptar esos campos (`Json`, relaciones 1-N para arrays). Se recomienda
-   > PostgreSQL.
+3. Anota el **host**, puerto (`3306`), nombre de base, usuario y contraseña. En Hostinger suelen
+   tener el prefijo de la cuenta, por ejemplo `u123456789_store`.
+4. Mantén el charset `utf8mb4` (es el valor por defecto del panel).
 
 Cadena de conexión de ejemplo:
 
 ```env
-DATABASE_URL="postgresql://usuario:password@host:5432/basedatos?schema=public&connection_limit=5"
+DATABASE_URL="mysql://usuario:password@localhost:3306/basedatos?connection_limit=5"
 ```
 
-`connection_limit=5` evita agotar las conexiones en hosting compartido.
+`connection_limit=5` evita agotar las conexiones en hosting compartido. Si el panel indica otro
+host o puerto, usa exactamente esos valores.
+
+> Los arrays (`images`, `tags`, `cities`) se guardan como **JSON** porque MySQL no soporta
+> `String[]`. La API los devuelve como `string[]`, así que el storefront no cambia.
 
 ---
 
@@ -87,8 +84,7 @@ migración falla, el build se detiene y la versión anterior sigue en producció
 Variables de entorno (hPanel → Web App → **Environment variables**):
 
 ```env
-DATABASE_URL="postgresql://usuario:password@host:5432/basedatos?schema=public&connection_limit=5"
-PORT=3001
+DATABASE_URL="mysql://usuario:password@localhost:3306/basedatos?connection_limit=5"
 NODE_ENV=production
 CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com"
 
@@ -114,10 +110,11 @@ pnpm install --frozen-lockfile
 pnpm --filter api prisma:seed
 ```
 
-Si es la primera vez y no hay migraciones versionadas:
+Para crear una migración nueva en desarrollo:
 
 ```bash
-pnpm db:migrate --name init   # en local, y luego commit de prisma/migrations
+pnpm db:migrate --name nombre_del_cambio
+# revisa y haz commit de apps/api/prisma/migrations
 ```
 
 ### Verificación

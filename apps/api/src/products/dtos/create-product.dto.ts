@@ -16,7 +16,7 @@ import {
 
 /**
  * Nota: `metadata` (atributos dinámicos del rubro) y `attributes` (flags de UI)
- * se validan como objetos genéricos: son schema less por diseño (JSONB).
+ * se validan como objetos genéricos: son schema less por diseño (JSON).
  */
 export class CreateProductVariantDto {
   /** Solo en actualizaciones: identifica una variante existente. */
@@ -98,7 +98,7 @@ export class CreateProductDto {
   @IsOptional() @IsObject()
   attributes?: Record<string, unknown>;
 
-  /** Configuración JSONB del grabado láser (null/omitido = no disponible). */
+  /** Configuración JSON del grabado láser (null/omitido = no disponible). */
   @IsOptional() @IsObject()
   engraving?: Record<string, unknown> | null;
 

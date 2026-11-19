@@ -6,7 +6,7 @@ Flujo objetivo:
 push a una rama / Pull Request
         │
         ▼
-GitHub Actions (CI)  ── typecheck + build ──► ✅
+GitHub Actions (CI)  ── migraciones + typecheck + build ──► ✅
         │
         ▼ merge a main
 Hostinger detecta el push (GitHub App)
@@ -77,9 +77,9 @@ Hostinger Business permite **varias Web Apps Node.js** y soporta monorepos media
 **Root directory**. Crea una app para la API y otra para el storefront, ambas conectadas al
 mismo repositorio.
 
-> **Antes de empezar:** confirma que tu plan incluye **PostgreSQL**. El schema de Prisma usa
-> `JsonB` y `String[]`, específicos de PostgreSQL; si el panel solo ofrece MySQL hay que adaptar
-> el schema antes de desplegar (ver [HOSTINGER.md](HOSTINGER.md#1-base-de-datos)).
+> **Base de datos:** Hostinger Business usa **MySQL/MariaDB**. El repo ya está adaptado
+> (`provider = "mysql"`), con `images`, `tags` y `cities` como arrays JSON. Las migraciones se
+> generaron para MySQL; no las reemplaces por las antiguas de PostgreSQL.
 
 ### 3.1 API (NestJS)
 
@@ -105,7 +105,7 @@ mantiene la versión anterior en producción.
 Variables de entorno de la API (hPanel → Web App → **Environment variables**):
 
 ```env
-DATABASE_URL=postgresql://usuario:password@host:5432/basedatos?schema=public&connection_limit=5
+DATABASE_URL=mysql://usuario:password@localhost:3306/basedatos?connection_limit=5
 NODE_ENV=production
 CORS_ORIGIN=https://tudominio.com,https://www.tudominio.com
 
@@ -217,7 +217,10 @@ Checklist rápida:
 ## 6. Migraciones de base de datos
 
 Las migraciones versionadas viven en `apps/api/prisma/migrations/` y se aplican en el build de
-la API (`build:deploy`). Para crear una migración en local:
+la API (`build:deploy`). El CI levanta un MySQL 8 temporal, aplica `prisma migrate deploy` y
+ejecuta el seed en cada PR para detectar SQL incompatible antes de llegar a `main`.
+
+Para crear una migración en local:
 
 ```bash
 pnpm db:migrate --name nombre_del_cambio

@@ -9,7 +9,7 @@ import { cn, formatPrice } from '@/lib/utils';
 /**
  * Asistente de grabado láser.
  *
- * Componente controlado: recibe la configuración JSONB del producto y emite la
+ * Componente controlado: recibe la configuración JSON del producto y emite la
  * selección completa (texto, tipografía, ubicación y precio) al checkout.
  */
 export function LaserEngravingCustomizer({

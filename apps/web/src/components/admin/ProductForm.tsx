@@ -635,7 +635,7 @@ export function ProductForm({ productId }: { productId?: string }) {
 
           <Panel
             title="Atributos y metadata"
-            description="Los atributos dinámicos se guardan como JSONB y son propios de cada rubro."
+            description="Los atributos dinámicos se guardan como JSON y son propios de cada rubro."
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Badges / sellos" hint="Separados por comas. Ej: Nuevo, Hecho a mano">

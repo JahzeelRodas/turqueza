@@ -11,7 +11,7 @@ Bolivia** y **checkout por WhatsApp**.
 | --- | --- |
 | Storefront | Next.js 15 (App Router) · TypeScript · Tailwind CSS · Framer Motion |
 | API | NestJS 11 · TypeScript · Prisma ORM |
-| Base de datos | PostgreSQL 16 (JSONB para atributos dinámicos) |
+| Base de datos | MySQL 8 / MariaDB (JSON para atributos dinámicos) |
 | Estado del carrito | Zustand + persistencia en `localStorage` |
 | Checkout | WhatsApp (`wa.me`) con mensaje formateado en servidor |
 
@@ -71,9 +71,9 @@ cp .env.example apps/api/.env
 cp .env.example apps/web/.env.local
 # Edita DATABASE_URL en apps/api/.env y NEXT_PUBLIC_API_URL en apps/web/.env.local
 
-# 3) Base de datos
+# 3) Base de datos (MySQL local o remoto configurado en DATABASE_URL)
 pnpm db:generate
-pnpm db:migrate --name init
+pnpm db:migrate:deploy
 pnpm db:seed
 
 # 4) Desarrollo (API :3001 + Web :3000)
@@ -87,7 +87,7 @@ pnpm dev
 
 > El storefront incluye datos de respaldo (`apps/web/src/lib/fallback.ts`), por lo que puede
 > renderizarse aunque la API todavía no esté levantada. En producción la fuente de verdad es
-> siempre PostgreSQL.
+> siempre MySQL.
 
 ## Scripts
 
@@ -116,7 +116,7 @@ pnpm dev
 | `PATCH` | `/api/orders/:orderNumber/confirm-whatsapp` | Marca el pedido como enviado (idempotente, sin datos personales) |
 
 Los precios **siempre** se recalculan en servidor: el cliente nunca envía importes. El grabado se
-valida contra la configuración JSONB del producto (caracteres, tipografía, ubicación y precio).
+valida contra la configuración JSON del producto (caracteres, tipografía, ubicación y precio).
 
 ### Endpoints del panel (`/api/admin`, requieren Bearer token)
 
@@ -151,7 +151,7 @@ El panel está en `/admin` y cubre las tareas operativas de la tienda:
 - **Dashboard:** ingresos confirmados, pedidos pendientes, ticket promedio, ventas de los
   últimos 7 días, stock bajo y productos más vendidos.
 - **Productos:** CRUD completo, publicación/borrador/archivo, destacados, imágenes,
-  atributos JSONB, configuración de grabado láser y editor de variantes con SKU, precio,
+  atributos JSON, configuración de grabado láser y editor de variantes con SKU, precio,
   stock y opciones.
 - **Ofertas masivas:** desde **Productos → Ofertas** se aplica un porcentaje definido por el
   usuario a todo el catálogo o a los productos seleccionados en la tabla. El descuento se
@@ -194,8 +194,8 @@ Sin tocar componentes:
 1. Añade un tema en `apps/web/src/config/store-theme.ts` (colores, radios, tipografía).
 2. Selecciónalo en **Admin → Tienda y CMS** (se guarda en `StoreConfig.themeId`). Si no hay
    configuración, se usa `NEXT_PUBLIC_STORE_THEME` como fallback.
-3. Cambia los bloques del home y la navegación desde el panel o en `StoreConfig` (JSONB).
-4. Reemplaza los datos del seed. Los atributos específicos viven en `metadata` (JSONB).
+3. Cambia los bloques del home y la navegación desde el panel o en `StoreConfig` (JSON).
+4. Reemplaza los datos del seed. Los atributos específicos viven en `metadata` (JSON).
 
 Los componentes no conocen "joyería": conocen bloques, productos, variantes y tokens.
 
@@ -229,5 +229,5 @@ Hostinger reconstruye y despliega automáticamente `apps/api` y `apps/web`.
 
 - `docker-compose.yml` y `nginx/` se conservan como alternativa **opcional** para VPS local. El
   despliegue objetivo es Hostinger Node.js nativo.
-- Los índices GIN sobre JSONB se documentan en `schema.prisma`; añádelos en la migración si
-  necesitas consultas intensivas por `metadata` o `engraving`.
+- MySQL no tiene índices GIN sobre JSON. Si necesitas consultas intensivas por `metadata` o
+  `engraving`, añade columnas generadas con índice o una tabla de atributos normalizada.

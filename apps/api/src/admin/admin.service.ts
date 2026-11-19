@@ -4,6 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const LOW_STOCK_THRESHOLD = 5;
 
+/** `images` es JSON en MySQL; devuelve la primera URL de forma segura. */
+function firstImage(value: Prisma.JsonValue | null | undefined): string | null {
+  if (!Array.isArray(value)) return null;
+  return typeof value[0] === 'string' ? value[0] : null;
+}
+
 /** Estados que cuentan como venta consolidada para los KPIs. */
 const REVENUE_STATUSES: OrderStatus[] = [
   OrderStatus.CONFIRMED_WHATSAPP,
@@ -168,7 +174,7 @@ export class AdminService {
           productId: row.productId,
           name: product?.name ?? 'Producto eliminado',
           slug: product?.slug ?? null,
-          image: product?.images?.[0] ?? null,
+          image: firstImage(product?.images),
           quantity: row._sum.quantity ?? 0,
           revenue: row._sum.total ?? 0,
         };
@@ -192,9 +198,9 @@ export class AdminService {
       const search = params.search.trim();
       and.push({
         OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { slug: { contains: search, mode: 'insensitive' } },
-          { variants: { some: { sku: { contains: search, mode: 'insensitive' } } } },
+          { name: { contains: search } },
+          { slug: { contains: search } },
+          { variants: { some: { sku: { contains: search } } } },
         ],
       });
     }
