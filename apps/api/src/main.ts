@@ -1,23 +1,68 @@
 // Punto de entrada de la API headless.
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 const PREFIX = 'api';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: false });
+/**
+ * Orígenes permitidos para el navegador.
+ *
+ * En el despliegue de Hostinger con backend y frontend separados, la web vive
+ * en https://tudominio.com y la API en https://api.tudominio.com. Sin CORS la
+ * web no puede crear pedidos ni usar el panel. En producción exigimos la
+ * variable para no abrir la API a cualquier origen por accidente.
+ */
+function resolveCorsOrigins(): string[] | boolean {
+  const raw = process.env.CORS_ORIGIN?.trim();
 
-  // Prefijo global: todos los endpoints viven bajo /api (Nginx hace proxy directo)
+  if (!raw) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '[bootstrap] Define CORS_ORIGIN con los dominios del frontend separados por coma.',
+      );
+    }
+    // Desarrollo local: refleja el origen de la petición.
+    return true;
+  }
+
+  if (raw === '*') return true;
+
+  return raw
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
+
+async function bootstrap() {
+  const corsOrigins = resolveCorsOrigins();
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    cors: false,
+  });
+
+  // Hostinger termina TLS en su proxy: confía en X-Forwarded-* para la IP real.
+  app.set('trust proxy', 1);
+
+  // Prefijo global: todos los endpoints viven bajo /api.
   app.setGlobalPrefix(PREFIX);
 
-  // Seguridad + CORS (orígenes separados por coma en CORS_ORIGIN)
-  app.use(helmet());
-  const origins = process.env.CORS_ORIGIN?.split(',').map((o) => o.trim());
-  app.enableCors({ origin: origins ?? true, credentials: true });
+  // Seguridad + CORS. El frontend es una Web App distinta en producción.
+  app.use(
+    helmet({
+      // La API puede servir archivos estáticos en el futuro (p. ej. imágenes).
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    maxAge: 86_400,
+  });
 
-  // Validación estricta de DTOs
+  // Validación estricta de DTOs.
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -26,10 +71,13 @@ async function bootstrap() {
     }),
   );
 
-  const port = Number(process.env.PORT ?? 3001);
-  await app.listen(port);
+  app.enableShutdownHooks();
 
-  console.log(`🚀 API lista en http://localhost:${port}/${PREFIX}`);
+  const port = Number(process.env.PORT ?? 3001);
+  // 0.0.0.0 es obligatorio en Hostinger: 127.0.0.1 no es accesible desde el proxy.
+  await app.listen(port, '0.0.0.0');
+
+  console.log(`🚀 API lista en http://0.0.0.0:${port}/${PREFIX}`);
 }
 
 bootstrap();

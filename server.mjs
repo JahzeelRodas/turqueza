@@ -1,5 +1,12 @@
 /**
- * Gateway de producción para Hostinger.
+ * Gateway opcional de producción para Hostinger (modo una sola Web App).
+ *
+ * El despliegue recomendado de Turquesa es con dos Web Apps separadas:
+ *   · apps/api  → api.tudominio.com
+ *   · apps/web  → tudominio.com
+ * Guía: docs/HOSTINGER.md. Usa este gateway solo si prefieres un único dominio
+ * y una sola Web App; en ese caso la build del frontend debe ejecutarse con
+ * ALLOW_SAME_ORIGIN_API=true (ver docs/HOSTINGER-UNA-APP.md).
  *
  * Hostinger expone un único proceso Node por Web App. Este proceso:
  *   1. abre el puerto público de inmediato (para que el proxy nunca devuelva 403),

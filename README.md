@@ -51,9 +51,9 @@ Bolivia** y **checkout por WhatsApp**.
 │        ├─ store/cart.ts         # Zustand
 │        └─ types/store.ts        # Contratos compartidos
 │
-├─ server.mjs                     # Gateway para una sola Web App en Hostinger
-├─ docs/HOSTINGER-UNA-APP.md      # Despliegue recomendado (una Web App)
-├─ docs/HOSTINGER.md              # Alternativa: API + Web separadas
+├─ server.mjs                     # Gateway opcional para una sola Web App
+├─ docs/HOSTINGER.md              # Despliegue recomendado: API + Web separadas
+├─ docs/HOSTINGER-UNA-APP.md      # Alternativa opcional: una sola Web App
 ├─ nginx/default.conf             # Proxy opcional (solo si usas VPS/Docker)
 ├─ docker-compose.yml             # Stack opcional de desarrollo local
 └─ pnpm-workspace.yaml
@@ -68,10 +68,10 @@ corepack enable
 # 1) Dependencias
 pnpm install
 
-# 2) Variables de entorno
-cp .env.example apps/api/.env
-cp .env.example apps/web/.env.local
-# Edita DATABASE_URL en apps/api/.env y NEXT_PUBLIC_API_URL en apps/web/.env.local
+# 2) Variables de entorno (una por app)
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env.local
+# Edita DATABASE_URL en apps/api/.env y las URLs de API en apps/web/.env.local
 
 # 3) Base de datos (MySQL local o remoto configurado en DATABASE_URL)
 pnpm db:generate
@@ -97,7 +97,9 @@ pnpm dev
 | --- | --- |
 | `pnpm dev` | API y Web en paralelo |
 | `pnpm build` | Build de API + Web |
-| `pnpm start` | Gateway de producción (API + Web en un solo puerto) |
+| `pnpm build:api:deploy` | Build de producción de la API (valida env + migra + compila) |
+| `pnpm build:web:deploy` | Build de producción del frontend (valida env + compila) |
+| `pnpm start` | Gateway opcional (API + Web en un solo puerto) |
 | `pnpm start:api` | API en producción (`node dist/main.js`) |
 | `pnpm start:web` | Next.js en producción (respeta `PORT`) |
 | `pnpm db:migrate` | Migración de desarrollo |
@@ -105,8 +107,12 @@ pnpm dev
 | `pnpm db:seed` | Datos iniciales de joyería + envíos Bolivia |
 | `pnpm typecheck` | TypeScript en todo el monorepo |
 
-> En Hostinger, la Web App única usa `pnpm build` + `pnpm start`: `server.mjs` publica `/` y
-> `/api/*` en el mismo dominio. Ver [docs/HOSTINGER-UNA-APP.md](docs/HOSTINGER-UNA-APP.md).
+> En Hostinger, el despliegue recomendado usa **dos Web Apps separadas**: `apps/api` en
+> `api.tudominio.com` y `apps/web` en `tudominio.com`. Cada app tiene su propio build y sus
+> propias variables. Ver [docs/HOSTINGER.md](docs/HOSTINGER.md).
+>
+> El modo de una sola Web App con `server.mjs` queda como alternativa opcional:
+> [docs/HOSTINGER-UNA-APP.md](docs/HOSTINGER-UNA-APP.md).
 
 ## API
 
@@ -219,17 +225,39 @@ El tema `joyeria` sigue el lenguaje de las joyerías editoriales contemporáneas
 - Componentes nuevos: sello de descuento y ahorro en tarjetas, badge de oferta en la ficha,
   footer oscuro editorial y página `/ofertas`.
 
-## Despliegue
+## Despliegue en Hostinger (backend y frontend separados)
 
-- **[docs/CI-CD.md](docs/CI-CD.md)** · flujo completo GitHub + GitHub Actions + Hostinger:
-  subida del repo, creación de las dos Web Apps Node.js, monorepo con `root directory`,
-  variables de entorno, auto-deploy al hacer merge a `main`, protección de rama, migraciones y
-  rollback.
-- **[docs/HOSTINGER.md](docs/HOSTINGER.md)** · configuración detallada de la base de datos,
-  dominios, SSL y checklist de producción en Hostinger Business (sin Docker).
+| Web App | Root directory | Framework | Build script | Output / entry | Dominio |
+| --- | --- | --- | --- | --- | --- |
+| API | `apps/api` | NestJS | `build:deploy` | `dist` / `main.js` | `api.tudominio.com` |
+| Frontend | `apps/web` | Next.js | `build:deploy` | `.next` / — | `tudominio.com` |
 
-Resumen del flujo: push a una rama → PR → CI (`typecheck` + build) → merge a `main` →
-Hostinger reconstruye y despliega automáticamente `apps/api` y `apps/web`.
+Variables principales:
+
+```env
+# API
+DATABASE_URL="mysql://usuario:password@localhost:3306/basedatos?connection_limit=5"
+NODE_ENV=production
+CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com"
+ADMIN_EMAIL="admin@tudominio.com"
+ADMIN_PASSWORD="una-contraseña-larga-y-segura"
+ADMIN_JWT_SECRET="cadena-aleatoria-de-64-caracteres-minimo"
+
+# Frontend
+NEXT_PUBLIC_API_URL="https://api.tudominio.com"
+API_INTERNAL_URL="https://api.tudominio.com"
+NEXT_PUBLIC_STORE_THEME=joyeria
+```
+
+- **[docs/HOSTINGER.md](docs/HOSTINGER.md)** · guía paso a paso: base de datos, dos Web Apps,
+  variables, CORS, SSL, seed, verificación y problemas frecuentes.
+- **[docs/CI-CD.md](docs/CI-CD.md)** · flujo GitHub + GitHub Actions + Hostinger: subida del
+  repo, auto-deploy al merge a `main`, protección de rama, migraciones y rollback.
+- **[docs/HOSTINGER-UNA-APP.md](docs/HOSTINGER-UNA-APP.md)** · alternativa opcional con una
+  sola Web App y `server.mjs`.
+
+Resumen del flujo: push a una rama → PR → CI (`typecheck` + build + smoke test de API y Web) →
+merge a `main` → Hostinger reconstruye y despliega automáticamente `apps/api` y `apps/web`.
 
 ## Notas
 

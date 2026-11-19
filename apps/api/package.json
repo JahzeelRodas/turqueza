@@ -3,10 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "description": "API headless (NestJS) de la plataforma e-commerce.",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "prisma generate && nest build",
-    "build:deploy": "prisma generate && prisma migrate deploy && nest build",
+    "build:deploy": "node scripts/check-env.mjs && prisma generate && prisma migrate deploy && nest build",
+    "build:deploy:nomigrate": "node scripts/check-env.mjs && prisma generate && nest build",
+    "build:deploy:seed": "node scripts/check-env.mjs && prisma generate && prisma migrate deploy && prisma db seed && nest build",
+    "check:env": "node scripts/check-env.mjs",
     "start": "node dist/main.js",
+    "start:prod": "node dist/main.js",
     "dev": "prisma generate && nest start --watch",
     "start:dev": "prisma generate && nest start --watch",
     "prisma:generate": "prisma generate",
@@ -20,6 +27,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@nestjs/cli": "^11.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
@@ -32,12 +40,11 @@
     "prisma": "^6.2.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.0",
     "@types/express": "^5.0.0",
-    "@types/node": "^22.10.2",
-    "typescript": "^5.7.2"
+    "@types/node": "^22.10.2"
   }
 }

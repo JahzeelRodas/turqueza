@@ -1,99 +1,92 @@
-# Despliegue en Hostinger Business (Node.js nativo)
+# Despliegue en Hostinger · backend y frontend separados
 
-> **Para Turquesa usa la guía de una sola Web App:**
-> **[HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md)**. El repo incluye `server.mjs`, que publica el
-> storefront y la API en el mismo dominio y evita crear `api.tudominio.com`. La guía de esta
-> página describe la **alternativa de dos Web Apps** (API y storefront separados).
-
-## Opción B: dos aplicaciones Node.js
+Guía para publicar Turquesa con **dos Web Apps Node.js independientes** en el plan Business
+de Hostinger (sin Docker):
 
 ```
-https://tudominio.com       -> apps/web  (Next.js, puerto asignado por Hostinger)
-https://api.tudominio.com   -> apps/api  (NestJS, puerto asignado por Hostinger)
-                                  |
-                                  +-> MySQL de Hostinger
+https://tudominio.com          → apps/web  (Next.js)
+https://api.tudominio.com      → apps/api  (NestJS)  → MySQL de Hostinger
 ```
 
-No se usan contenedores. Cada app se instala y compila en su propio directorio.
+Ventajas de separar las apps:
 
-> Conecta el repositorio de GitHub a dos Web Apps Node.js (una para `apps/api` y otra para
-> `apps/web`) usando **Root directory**. Hostinger reconstruye y despliega automáticamente en
-> cada push a `main`, mientras GitHub Actions valida el código. Guía completa:
-> **[CI-CD.md](CI-CD.md)**.
+- Cada una se construye, reinicia y escala por su cuenta.
+- La API puede recibir otros clientes (apps móviles, integraciones) sin pasar por el storefront.
+- El frontend no arrastra el proceso de NestJS ni el de Prisma.
+- El panel `/admin` sigue viviendo en el frontend y habla con la API por HTTPS.
+
+> Si prefieres un único dominio y una sola Web App, existe el modo opcional con
+> [`server.mjs`](../server.mjs): [HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md). Esta guía es la
+> recomendada para Turquesa.
 
 ---
 
-## 1. Base de datos
-
-Hostinger Business ofrece **MySQL/MariaDB**. El schema de Prisma ya está configurado con
-`provider = "mysql"`; no hay que cambiarlo.
+## 1. Base de datos MySQL
 
 1. hPanel → **Bases de datos → MySQL**.
 2. Crea una base y un usuario con permisos totales.
-3. Anota el **host**, puerto (`3306`), nombre de base, usuario y contraseña. En Hostinger suelen
-   tener el prefijo de la cuenta, por ejemplo `u123456789_store`.
-4. Mantén el charset `utf8mb4` (es el valor por defecto del panel).
+3. Anota **host**, puerto (`3306`), nombre de base, usuario y contraseña. En Hostinger suelen
+   llevar el prefijo de la cuenta, por ejemplo `u123456789_turquesa`.
+4. Mantén el charset `utf8mb4`.
 
-Cadena de conexión de ejemplo:
+Cadena de conexión:
 
 ```env
-DATABASE_URL="mysql://usuario:password@localhost:3306/basedatos?connection_limit=5"
+DATABASE_URL="mysql://USUARIO:PASSWORD@localhost:3306/BASEDATOS?connection_limit=5"
 ```
 
-`connection_limit=5` evita agotar las conexiones en hosting compartido. Si el panel indica otro
-host o puerto, usa exactamente esos valores.
-
-> Los arrays (`images`, `tags`, `cities`) se guardan como **JSON** porque MySQL no soporta
-> `String[]`. La API los devuelve como `string[]`, así que el storefront no cambia.
+`connection_limit=5` evita agotar las conexiones del hosting compartido. Usa exactamente el
+host y puerto que muestre hPanel.
 
 ---
 
-## 2. Subir el repositorio
+## 2. Preparar el repositorio
 
-1. Sube el monorepo a GitHub (ver [CI-CD.md](CI-CD.md) para el primer commit y el push).
-2. hPanel → **Sitios web → Añadir sitio web → Node.js web app**.
-3. Conecta GitHub y selecciona el repositorio.
-4. Crea **dos Web Apps** desde el mismo repo, cambiando el **Root directory**:
-   - `apps/api` para la API.
-   - `apps/web` para el storefront.
+El monorepo ya está listo para desplegar cada app por separado:
 
-Hostinger detecta el monorepo, instala dependencias y compila **solo** el subdirectorio
-indicado. No hace falta clonar ni instalar por SSH: cada push a la rama conectada reconstruye y
-reinicia la app automáticamente.
+```
+apps/api   → API NestJS + Prisma + migraciones
+apps/web   → Storefront Next.js + panel /admin
+```
 
-> Si hPanel no detecta pnpm, selecciónalo manualmente (el `pnpm-lock.yaml` está en la raíz del
-> monorepo). Cada `package.json` de `apps/*` es autocontenido, así que también funciona con npm
-> como alternativa.
+No subas `.env`, `.env.local` ni `.env.production.local`: las variables van en hPanel. El
+`.gitignore` ya los excluye.
+
+Cada `apps/*/package.json` es autocontenido. Hostinger puede instalar con **pnpm** (recomendado,
+el `pnpm-lock.yaml` está en la raíz del monorepo) o con **npm** si el panel no detecta pnpm.
 
 ---
 
-## 3. API (NestJS)
+## 3. Web App de la API (NestJS)
 
-En hPanel → **Node.js** crea una aplicación:
+hPanel → **Websites → Add Website → Node.js web app → Connect with GitHub**:
 
 | Campo | Valor |
 | --- | --- |
 | Repositorio | `TU_USUARIO/turquesa` · rama `main` |
 | **Root directory** | `apps/api` |
-| Framework | NestJS |
-| Versión de Node | 22 |
-| Package manager | pnpm |
-| Comando de build | `build:deploy` |
+| Framework | **NestJS** |
+| Node.js | **22** |
+| Package manager | **pnpm** (si no se detecta, selecciónalo manualmente) |
+| Build script | `build:deploy` |
 | Output directory | `dist` |
 | Entry file | `main.js` |
 | Dominio | `api.tudominio.com` |
 
-`build:deploy` ejecuta `prisma generate`, `prisma migrate deploy` y `nest build`. Si una
-migración falla, el build se detiene y la versión anterior sigue en producción.
+> El **entry file** es relativo al output directory. Escribe `main.js`, no `dist/main.js`.
+> No definas `PORT`: Hostinger lo inyecta y la API lee `process.env.PORT`.
 
-Variables de entorno (hPanel → Web App → **Environment variables**):
+### Variables de entorno de la API
+
+hPanel → Web App (API) → **Environment variables**:
 
 ```env
-DATABASE_URL="mysql://usuario:password@localhost:3306/basedatos?connection_limit=5"
+DATABASE_URL="mysql://USUARIO:PASSWORD@localhost:3306/BASEDATOS?connection_limit=5"
 NODE_ENV=production
+
+# Dominios exactos del frontend, separados por coma y sin barra final.
 CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com"
 
-# Panel de administración (cambiar obligatoriamente)
 ADMIN_EMAIL="admin@tudominio.com"
 ADMIN_PASSWORD="una-contraseña-larga-y-segura"
 ADMIN_NAME="Administrador"
@@ -101,181 +94,236 @@ ADMIN_JWT_SECRET="cadena-aleatoria-de-64-caracteres-minimo"
 ADMIN_TOKEN_TTL_HOURS=12
 ```
 
-> Hostinger inyecta su propio `PORT`. Si el panel lo define, **no lo sobrescribas**: la app lee
-> `process.env.PORT`.
+Notas importantes:
 
-### Migraciones y seed
+- **`CORS_ORIGIN` es obligatorio en producción.** Sin él la API se niega a arrancar para no
+  quedar abierta a cualquier origen. Incluye el dominio temporal de Hostinger mientras pruebas.
+- **`NODE_ENV=production`** activa la validación estricta de credenciales y CORS.
+- La API valida estas variables **antes de compilar** (`build:deploy` → `scripts/check-env.mjs`).
+  Si falta algo, el build falla con un mensaje claro y no reemplaza la versión anterior.
+- **`ADMIN_PASSWORD`** debe tener al menos 10 caracteres y no puede ser `admin123`.
+- **`ADMIN_JWT_SECRET`** debe tener al menos 32 caracteres.
 
-Las migraciones versionadas se aplican solas en cada build de la API (`build:deploy`). Para el
-seed inicial (joyería + envíos Bolivia), ejecútalo una vez por SSH desde un clon del repo:
+### Qué hace `build:deploy`
 
-```bash
-corepack enable
-pnpm install --frozen-lockfile
-pnpm --filter api prisma:seed
+```text
+scripts/check-env.mjs   → valida variables de producción
+prisma generate         → genera el cliente tipado
+prisma migrate deploy   → aplica migraciones pendientes
+nest build              → compila a dist/
 ```
 
-Para crear una migración nueva en desarrollo:
+Si una migración falla, el build falla y Hostinger mantiene la versión anterior en producción.
+
+Si el entorno de build no puede alcanzar MySQL, usa `build:deploy:nomigrate` y aplica las
+migraciones por SSH antes del push:
 
 ```bash
-pnpm db:migrate --name nombre_del_cambio
-# revisa y haz commit de apps/api/prisma/migrations
+pnpm --filter api prisma:migrate:deploy
 ```
 
-### Verificación
+### Seed inicial
+
+El seed carga catálogo de ejemplo, las 9 zonas de envío de Bolivia y la configuración de tienda.
+Es idempotente. Ejecútalo **una sola vez**:
+
+- **Opción A (recomendada):** por SSH desde un clon del repo:
+
+  ```bash
+  pnpm install --frozen-lockfile
+  pnpm --filter api prisma:seed
+  ```
+
+- **Opción B:** cambia temporalmente el build script de la API a `build:deploy:seed`, pulsa
+  **Deploy** y vuelve a `build:deploy` después de verificar el login.
+
+No dejes el seed activo en cada build: puede sobrescribir cambios de la tienda.
+
+### Verificación de la API
 
 ```bash
-curl https://api.tudominio.com/api/health
-curl https://api.tudominio.com/api/products
+curl -i https://api.tudominio.com/api/health
+curl -i https://api.tudominio.com/api/products
 ```
 
-### Panel de administración
-
-El panel vive en `https://tudominio.com/admin` (lo sirve la misma app Next.js). Usa las
-variables `ADMIN_EMAIL` y `ADMIN_PASSWORD` definidas arriba. Los endpoints `/api/admin/*`
-están protegidos con un token firmado (`ADMIN_JWT_SECRET`) y el login se puede comprobar con:
-
-```bash
-curl -X POST https://api.tudominio.com/api/admin/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@tudominio.com","password":"TU_CONTRASEÑA"}'
-```
-
-> Seguridad: usa una contraseña larga, un `ADMIN_JWT_SECRET` aleatorio y mantén
-> `CORS_ORIGIN` restringido a tus dominios. El panel no se indexa (`noindex`).
-> Con `NODE_ENV=production` la API se niega a arrancar si faltan las variables de
-> administración, si se usa `admin123` o si el secreto tiene menos de 32 caracteres.
+`/api/health` debe responder `200` con `{"status":"ok","db":"up"}`.
 
 ---
 
-## 4. Storefront (Next.js)
+## 4. Web App del frontend (Next.js)
 
-Crea una segunda aplicación Node:
+Crea una segunda Web App desde el mismo repositorio:
 
 | Campo | Valor |
 | --- | --- |
 | Repositorio | `TU_USUARIO/turquesa` · rama `main` |
 | **Root directory** | `apps/web` |
-| Framework | Next.js |
-| Versión de Node | 22 |
-| Package manager | pnpm |
-| Comando de build | `build` |
+| Framework | **Next.js** |
+| Node.js | **22** |
+| Package manager | **pnpm** (o npm) |
+| Build script | `build:deploy` |
 | Output directory | `.next` |
-| Entry file | (se ignora en Next.js) |
+| Entry file | (Hostinger lo ignora en Next.js) |
 | Dominio | `tudominio.com` y `www.tudominio.com` |
 
-Variables de entorno (hPanel → Web App → **Environment variables**):
+Hostinger construye Next.js en modo servidor y aplica `output: "standalone"` automáticamente.
+El `next.config.mjs` del repo exporta un objeto, que es lo que Hostinger espera.
+
+### Variables de entorno del frontend
+
+hPanel → Web App (Frontend) → **Environment variables**:
 
 ```env
+# URL pública de la API: la usa el navegador para pedidos y para /admin.
+# Absoluta, HTTPS y SIN barra final.
 NEXT_PUBLIC_API_URL="https://api.tudominio.com"
+
+# URL que usa el servidor de Next (RSC/SSR) para leer catálogo y configuración.
+# En Hostinger las dos Web Apps no comparten localhost: usa la URL pública.
 API_INTERNAL_URL="https://api.tudominio.com"
+
 NEXT_PUBLIC_STORE_THEME=joyeria
+NODE_ENV=production
+NEXT_TELEMETRY_DISABLED=1
 ```
 
-- `NEXT_PUBLIC_API_URL` la usa el navegador para crear el pedido.
-- `API_INTERNAL_URL` la usa el servidor (RSC) para leer catálogo y configuración. En Hostinger
-  las apps no comparten `localhost`, así que apunta a la **URL pública** de la API.
+Notas importantes:
 
-> Las variables `NEXT_PUBLIC_*` se incrustan en **build time**. Si cambias la URL de la API,
-> pulsa **Redeploy** en hPanel para recompilar.
+- **`NEXT_PUBLIC_API_URL` se incrusta en build time.** Si cambias la URL de la API, pulsa
+  **Redeploy** para recompilar. No la dejes vacía: el navegador intentaría `/api` en el dominio
+  del frontend y recibiría 404. El build `build:deploy` lo impide con `scripts/check-env.mjs`.
+- **`API_INTERNAL_URL`** debe ser la URL pública de la API, no `http://127.0.0.1:3001`.
+- Las variables `NEXT_PUBLIC_*` deben estar definidas **antes** del build.
+
+### Verificación del frontend
+
+```bash
+curl -I https://tudominio.com
+curl -I https://tudominio.com/admin
+```
+
+La home debe mostrar productos reales, no los datos de respaldo de `fallback.ts`. Si muestra
+datos de respaldo, la API no está respondiendo o `API_INTERNAL_URL` es incorrecta.
 
 ---
 
-## 5. SSL y dominio
+## 5. CORS, dominios y SSL
 
-1. hPanel → **Seguridad → SSL** → activa Let's Encrypt para ambos subdominios.
-2. Fuerza HTTPS.
-3. Ajusta `CORS_ORIGIN` en la API con los dominios finales (sin barra final).
+1. En la Web App de la API, `CORS_ORIGIN` debe contener **exactamente** los dominios del
+   frontend, separados por coma y sin barra final:
+
+   ```env
+   CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com"
+   ```
+
+2. Si vas a probar con la URL temporal de Hostinger (`*.hostingersite.com`), añádela también:
+
+   ```env
+   CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com,https://TU-APP-TEMPORAL.hostingersite.com"
+   ```
+
+   Cuando el dominio final funcione, elimina la URL temporal y pulsa **Redeploy** en la API.
+
+3. hPanel → **Seguridad → SSL** → activa Let's Encrypt para `tudominio.com`,
+   `www.tudominio.com` y `api.tudominio.com`. Fuerza HTTPS.
+
+4. Asigna los dominios desde **Web App → Domains**. Si un dominio ya existía como sitio
+   estático, elimínalo o desvincúlalo antes de asignarlo a la Web App.
 
 ---
 
-## 6. Configurar la tienda y WhatsApp
+## 6. Orden recomendado del primer despliegue
 
-Actualiza el singleton de configuración desde **Admin → Tienda y CMS** o con
-`PATCH /api/admin/store-config` enviando `Authorization: Bearer <token>`:
+1. Crea la base MySQL.
+2. Crea la Web App de la **API** con root `apps/api`, variables y dominio `api.tudominio.com`.
+3. Despliega la API y verifica `/api/health`.
+4. Ejecuta el seed una vez.
+5. Crea la Web App del **frontend** con root `apps/web`, variables y dominio `tudominio.com`.
+6. Despliega el frontend y verifica `/` y `/admin`.
+7. Prueba el login del panel y un checkout de WhatsApp.
+8. Si usaste `build:deploy:seed`, vuelve a `build:deploy` y haz **Redeploy** de la API.
 
-```json
-{
-  "storeName": "Turquesa Joyería",
-  "whatsappNumber": "59171234567",
-  "currency": "BOB",
-  "locale": "es-BO",
-  "country": "Bolivia"
-}
-```
-
-También puedes editarlo en `apps/api/prisma/seed.ts` y volver a ejecutar el seed.
+> Despliega la API **antes** que el frontend. Durante el build de Next, las páginas leen el
+> catálogo de la API; si aún no existe, el storefront usa datos de respaldo y se corrige en la
+> siguiente revalidación (60 s) o al hacer Redeploy.
 
 ---
 
 ## 7. Checklist de producción
 
-- [ ] Repo conectado a dos Web Apps con **Root directory** `apps/api` y `apps/web`.
-- [ ] CI de GitHub Actions en verde y rama `main` protegida.
-- [ ] `DATABASE_URL` con `connection_limit` bajo.
-- [ ] `ADMIN_EMAIL`, `ADMIN_PASSWORD` (mín. 10 caracteres) y `ADMIN_JWT_SECRET`
-      (mín. 32) configurados; la API no arranca en producción con credenciales demo.
-- [ ] `CORS_ORIGIN` con dominio(s) exactos.
-- [ ] `NEXT_PUBLIC_API_URL` apuntando a HTTPS y build rehecho.
+- [ ] Dos Web Apps creadas con **Root directory** `apps/api` y `apps/web`.
+- [ ] API con framework **NestJS**, output `dist`, entry `main.js`, build `build:deploy`.
+- [ ] Frontend con framework **Next.js**, output `.next`, build `build:deploy`.
+- [ ] `DATABASE_URL` con `connection_limit=5`.
+- [ ] `NODE_ENV=production` en ambas apps.
+- [ ] `CORS_ORIGIN` con los dominios exactos del frontend.
+- [ ] `ADMIN_EMAIL`, `ADMIN_PASSWORD` (mín. 10) y `ADMIN_JWT_SECRET` (mín. 32) configurados.
+- [ ] `NEXT_PUBLIC_API_URL` y `API_INTERNAL_URL` apuntando a `https://api.tudominio.com`.
+- [ ] Build del frontend rehecho después de cambiar `NEXT_PUBLIC_*`.
 - [ ] Migraciones aplicadas (`prisma migrate deploy`).
 - [ ] Seed ejecutado o catálogo cargado.
-- [ ] `whatsappNumber` en formato internacional sin `+`.
-- [ ] `/api/health` responde 200.
-- [ ] Checkout de prueba: producto + grabado + departamento + WhatsApp abre con el mensaje.
-- [ ] SSL activo y redirección HTTPS.
-- [ ] Copias de seguridad de la base activadas en hPanel.
+- [ ] `/api/health` responde `200`.
+- [ ] Home con productos reales.
+- [ ] Login de `/admin` funciona.
+- [ ] Checkout de prueba abre WhatsApp con el mensaje correcto.
+- [ ] SSL activo y redirección HTTPS en ambos dominios.
+- [ ] Copias de seguridad de MySQL activadas en hPanel.
 
 ---
 
-## 8. Actualizaciones
+## 8. Actualizaciones y rollback
 
-El despliegue es automático: haz merge a `main` y Hostinger reconstruye y reinicia **ambas**
-Web Apps. Revisa el resultado en **Deployments** (commit, autor, logs y estado). No hace falta
-`git pull` ni `npm install` por SSH.
+Cada push a `main` reconstruye **las dos** Web Apps de forma independiente. Revisa
+**Deployments** y **Runtime Logs** de cada una.
 
-Para volver atrás, revierte el commit y vuelve a hacer push:
+Para volver atrás, revierte en Git:
 
 ```bash
 git revert <commit>
 git push origin main
 ```
 
-Las migraciones de base de datos son forward-only: si el cambio de esquema es destructivo,
-prepara el script de vuelta atrás antes de desplegar. Más detalle en [CI-CD.md](CI-CD.md).
+Hostinger reconstruye el commit revertido. Las migraciones son forward-only: si el cambio de
+esquema es destructivo, prepara el script de vuelta atrás antes de desplegar.
 
-## Si aparece 403 Forbidden
+---
 
-Si `https://tudominio.com/` devuelve una página **403 de Hostinger** (cabeceras `platform:
-hostinger`, `Server: hcdn`) y `/api/health` devuelve la página **"This Page Does Not Exist"**,
-las peticiones no están llegando a la Web App. El código no está fallando: el dominio está
-sirviendo un `public_html` vacío o le falta el `.htaccess` que redirige al proceso Node.
+## 9. Problemas frecuentes
 
-Revisa en este orden:
-
-1. **El dominio ya existía como sitio/subdominio normal.** Hostinger exige eliminar ese sitio
-   antes de crear la Web App. Si el dominio aparece en **Websites** como sitio estático,
-   elimínalo o desvinculalo y asígnalo desde la Web App → **Domains**.
-2. **La Web App está en otro dominio.** Abre la URL temporal que muestra hPanel. Si esa URL
-   carga, el problema es solo la asignación de `tudominio.com`.
-3. **Build fallido o app detenida.** Revisa **Deployments** y **Runtime Logs**. El estado debe
-   ser **Running**.
-4. **`.htaccess` obsoleto.** Pulsa **Redeploy**: Hostinger lo regenera en `public_html`. No lo
-   edites a mano.
-5. **Ajustes de la Web App:** si usas la guía de una sola app, root `/`, framework
-   **Other / Node.js**, build `pnpm build` y start `pnpm start`; si usas dos apps, root
-   `apps/web`, framework Next.js, build `build`, output `.next` y entry vacío.
-
-Para la API, el dominio debe apuntar a una Web App distinta con root `apps/api`, build
-`build:deploy`, output `dist` y entry `main.js`.
-
-## Problemas frecuentes
-
-| Síntoma | Causa probable |
+| Síntoma | Causa / solución |
 | --- | --- |
-| `PrismaClientInitializationError` | `DATABASE_URL` incorrecta o conexiones agotadas |
-| CORS bloqueado | `CORS_ORIGIN` no incluye el dominio exacto |
-| El catálogo muestra datos de respaldo | `API_INTERNAL_URL` inaccesible desde el servidor |
-| El checkout no abre WhatsApp | `whatsappNumber` vacío o con `+`/espacios |
-| Build falla por memoria | Compila API y Web por separado (`npm run build` en cada app) |
-| `403 Forbidden` de Hostinger | Dominio asociado a un sitio estático vacío o `.htaccess` obsoleto: reasigna el dominio a la Web App y haz Redeploy |
-| `404` con página de Hostinger | La petición no llega a la app: revisa dominio, estado de la Web App y `.htaccess` |
+| `package.json not found` | **Root directory** incorrecto: usa `apps/api` o `apps/web`. |
+| Hostinger usa npm en vez de pnpm | Selecciona **pnpm** manualmente; el lockfile está en la raíz. También puedes usar npm: cada app es autocontenida. |
+| El build de la API falla por variables | Revisa el mensaje de `scripts/check-env.mjs`; falta `CORS_ORIGIN`, `ADMIN_*` o `DATABASE_URL`. |
+| `PrismaClientInitializationError` | `DATABASE_URL` incorrecta, usuario sin permisos o conexiones agotadas. Usa `connection_limit=5`. |
+| `prisma migrate deploy` falla en el build | El entorno de build no alcanza MySQL. Usa `build:deploy:nomigrate` y aplica migraciones por SSH. |
+| CORS bloqueado | `CORS_ORIGIN` no incluye el dominio exacto, o tiene barra final. |
+| El frontend muestra datos de respaldo | `API_INTERNAL_URL` incorrecta o la API está caída. |
+| El navegador llama a `/api` en el dominio del frontend | `NEXT_PUBLIC_API_URL` quedó vacía. Define la URL de la API y haz Redeploy. |
+| Cambié una variable y no se aplica | Las `NEXT_PUBLIC_*` requieren recompilar: pulsa **Redeploy**. |
+| Build de Next falla por memoria | Es un plan compartido: compila solo `apps/web` (root directory correcto) y evita builds simultáneos. |
+| `403 Forbidden` de Hostinger | El dominio apunta a un sitio estático vacío o el `.htaccess` está obsoleto. Reasigna el dominio a la Web App y pulsa **Redeploy**. |
+| `404` con página de Hostinger | La petición no llega a la app: revisa dominio, estado **Running** y `.htaccess`. |
+| El admin no acepta login | Falta el seed o `ADMIN_EMAIL` / `ADMIN_PASSWORD` no coinciden con las variables de la API. |
+| El checkout no abre WhatsApp | `whatsappNumber` vacío o con `+`/espacios en **Admin → Tienda y CMS**. |
+| La home sigue con el catálogo viejo | Espera la revalidación (60 s) o pulsa **Redeploy** en el frontend. |
+
+---
+
+## 10. Modo opcional: una sola Web App
+
+Si tu plan no permite dos Web Apps o prefieres un único dominio, el repo conserva
+[`server.mjs`](../server.mjs). Publica `/` y `/api/*` en el mismo proceso y elimina la necesidad
+de CORS entre dominios. Guía: [HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md).
+
+En ese modo:
+
+- Root directory: `/` (raíz del monorepo).
+- Framework: **Other / Node.js**.
+- Build script: `build`.
+- Entry file: `server.mjs`.
+- `NEXT_PUBLIC_API_URL` debe quedar vacía y el build del frontend debe ejecutarse con
+  `ALLOW_SAME_ORIGIN_API=true`.
+
+No mezcles ambos modos: si usas dos Web Apps, cada app debe tener su propio root directory y sus
+propias variables.

@@ -1,4 +1,9 @@
-# Hostinger · una sola Web App (recomendado)
+# Hostinger · una sola Web App (opcional)
+
+> **Modo opcional.** El despliegue recomendado para Turquesa es con **backend y frontend
+> separados**: dos Web Apps, `apps/api` en `api.tudominio.com` y `apps/web` en
+> `tudominio.com`. Guía: **[HOSTINGER.md](HOSTINGER.md)**. Usa esta guía solo si tu plan no
+> permite dos Web Apps o prefieres un único dominio.
 
 Hostinger Business expone **un único proceso Node por Web App**. El repo incluye
 [`server.mjs`](../server.mjs), un gateway que arranca los dos servicios internos y publica todo
@@ -15,7 +20,7 @@ https://turqueza.rovelbots.com
                                       └─ MySQL de Hostinger
 ```
 
-Ventajas frente a dos Web Apps:
+Ventajas de este modo:
 
 - No hace falta crear `api.turqueza.rovelbots.com`.
 - El navegador llama a `/api` en el **mismo origen**: no hay CORS entre dominios.
@@ -23,7 +28,7 @@ Ventajas frente a dos Web Apps:
 - Un solo dominio, un solo SSL y un solo despliegue.
 
 > Si tu panel no permite un comando de inicio personalizado o no acepta framework
-> **Other / Node.js**, usa la alternativa de dos Web Apps de [HOSTINGER.md](HOSTINGER.md).
+> **Other / Node.js**, usa la guía recomendada de dos Web Apps: [HOSTINGER.md](HOSTINGER.md).
 
 ---
 
@@ -60,6 +65,10 @@ hPanel → **Websites → Add Website → Node.js web app → Connect with GitHu
 `pnpm build` compila la API (`apps/api/dist`) y el storefront (`apps/web/.next`).
 `pnpm start` ejecuta el gateway, que abre el puerto público de inmediato y luego espera a que
 ambos servicios estén listos.
+
+> Si en lugar de `pnpm build` usas `pnpm --filter web build:deploy` en este modo, define
+> `ALLOW_SAME_ORIGIN_API=true`: el chequeo de entorno del frontend exige una URL de API cuando
+> se despliega con dos Web Apps, y aquí la API vive en el mismo origen.
 
 > **Importante:** el framework debe ser **Other / Node.js**. Con el preset **Next.js**,
 > Hostinger ignora el comando de inicio y arranca solo el servidor standalone de Next; en ese caso

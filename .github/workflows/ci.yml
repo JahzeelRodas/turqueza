@@ -18,14 +18,14 @@ concurrency:
 
 jobs:
   verify:
-    name: Typecheck, build & gateway
+    name: Typecheck, build & smoke test (API + Web)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     env:
       DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci?connection_limit=5
-      # Igual que producción: el navegador usa /api del mismo origen.
-      NEXT_PUBLIC_API_URL: ""
+      # Igual que el despliegue de dos Web Apps: el navegador llama a la API pública.
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
       API_INTERNAL_URL: http://127.0.0.1:3001
       NEXT_PUBLIC_STORE_THEME: joyeria
       NEXT_TELEMETRY_DISABLED: 1
@@ -34,7 +34,7 @@ jobs:
       ADMIN_NAME: Administrador
       ADMIN_JWT_SECRET: ci-secret-turquesa-2026-cadena-larga-para-firmar-tokens
       ADMIN_TOKEN_TTL_HOURS: 12
-      CORS_ORIGIN: http://127.0.0.1:8080
+      CORS_ORIGIN: http://127.0.0.1:3000
 
     services:
       mysql:
@@ -80,32 +80,71 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Validar gateway
+      - name: Validar gateway opcional
         run: node --check server.mjs
 
-      - name: Build de API y Web
-        run: pnpm build
+      - name: Build de la API (flujo de Hostinger)
+        env:
+          NODE_ENV: production
+        run: pnpm --filter api build:deploy
 
-      - name: Smoke test del gateway
+      - name: Build del frontend (flujo de Hostinger)
+        env:
+          NODE_ENV: production
+        run: pnpm --filter web build:deploy
+
+      - name: Smoke test de API y frontend separados
         run: |
           set -euo pipefail
-          PORT=8080 RUN_SEED=false node server.mjs > /tmp/gateway.log 2>&1 &
-          GATEWAY_PID=$!
-          trap 'kill "$GATEWAY_PID" 2>/dev/null || true' EXIT
+
+          NODE_ENV=production PORT=3001 pnpm --filter api start > /tmp/api.log 2>&1 &
+          API_PID=$!
+
+          NODE_ENV=production PORT=3000 pnpm --filter web start > /tmp/web.log 2>&1 &
+          WEB_PID=$!
+
+          trap 'kill "$API_PID" "$WEB_PID" 2>/dev/null || true' EXIT
 
           for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8080/api/health > /dev/null; then
+            if curl -fsS http://127.0.0.1:3001/api/health > /dev/null; then
               break
             fi
             sleep 2
           done
 
-          if ! curl -fsS http://127.0.0.1:8080/api/health; then
-            cat /tmp/gateway.log
+          if ! curl -fsS http://127.0.0.1:3001/api/health; then
+            echo "--- API log ---"
+            cat /tmp/api.log
             exit 1
           fi
-          curl -fsS http://127.0.0.1:8080/api/products > /dev/null
-          curl -fsS http://127.0.0.1:8080/ > /dev/null
 
-          kill "$GATEWAY_PID" 2>/dev/null || true
-          wait "$GATEWAY_PID" 2>/dev/null || true
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/ > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          if ! curl -fsS http://127.0.0.1:3000/ > /dev/null; then
+            echo "--- Web log ---"
+            cat /tmp/web.log
+            exit 1
+          fi
+
+          # Catálogo real desde la API.
+          curl -fsS http://127.0.0.1:3001/api/products > /dev/null
+
+          # Login del panel (mismas credenciales que producción).
+          curl -fsS -X POST http://127.0.0.1:3001/api/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@turquesa.bo","password":"TurquesaAdmin2026!"}' > /dev/null
+
+          # Preflight CORS: el navegador del frontend debe poder llamar a la API.
+          CORS_HEADERS=$(curl -sS -D - -o /dev/null -X OPTIONS \
+            http://127.0.0.1:3001/api/products \
+            -H 'Origin: http://127.0.0.1:3000' \
+            -H 'Access-Control-Request-Method: GET')
+          echo "$CORS_HEADERS" | grep -qi 'access-control-allow-origin: http://127.0.0.1:3000'
+
+          kill "$API_PID" "$WEB_PID" 2>/dev/null || true
+          wait "$API_PID" "$WEB_PID" 2>/dev/null || true
