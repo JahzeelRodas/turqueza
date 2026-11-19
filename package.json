@@ -14,6 +14,7 @@
     "build": "pnpm --filter api build && pnpm --filter web build",
     "build:api": "pnpm --filter api build",
     "build:web": "pnpm --filter web build",
+    "start": "node server.mjs",
     "start:api": "pnpm --filter api start",
     "start:web": "pnpm --filter web start",
     "typecheck": "pnpm -r typecheck",
