@@ -4,8 +4,8 @@ Guía para publicar Turquesa con **dos Web Apps Node.js independientes** en el p
 de Hostinger (sin Docker):
 
 ```
-https://tudominio.com          → apps/web  (Next.js)
-https://api.tudominio.com      → apps/api  (NestJS)  → MySQL de Hostinger
+https://turqueza.rovelbots.com       → apps/web  (Next.js)
+https://turqueza-api.rovelbots.com   → apps/api  (NestJS)  → MySQL de Hostinger
 ```
 
 Ventajas de separar las apps:
@@ -15,9 +15,12 @@ Ventajas de separar las apps:
 - El frontend no arrastra el proceso de NestJS ni el de Prisma.
 - El panel `/admin` sigue viviendo en el frontend y habla con la API por HTTPS.
 
-> Si prefieres un único dominio y una sola Web App, existe el modo opcional con
-> [`server.mjs`](../server.mjs): [HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md). Esta guía es la
-> recomendada para Turquesa.
+> **Importante — Hostinger aísla la red de cada Web App.** Dos procesos de la misma cuenta no
+> pueden comunicarse por `127.0.0.1`. Por eso el gateway de una sola app (`server.mjs` en modo
+> gateway) **no funciona en Web Apps de Hostinger**: arranca NestJS y Next.js como hijos, no los
+> alcanza por loopback, agota los 120 s y el dominio devuelve **503**. Usa siempre dos Web Apps
+> (esta guía). El gateway queda solo para VPS/Docker/local; ver
+> [HOSTINGER-UNA-APP.md](HOSTINGER-UNA-APP.md).
 
 ---
 
@@ -55,6 +58,17 @@ No subas `.env`, `.env.local` ni `.env.production.local`: las variables van en h
 Cada `apps/*/package.json` es autocontenido. Hostinger puede instalar con **pnpm** (recomendado,
 el `pnpm-lock.yaml` está en la raíz del monorepo) o con **npm** si el panel no detecta pnpm.
 
+### Configuración exacta de Turquesa
+
+| Web App | Root directory | Framework | Build script | Output | Entry file | Dominio |
+| --- | --- | --- | --- | --- | --- | --- |
+| API | `apps/api` | **NestJS** | `build:deploy` | `dist` | `main.js` | `turqueza-api.rovelbots.com` |
+| Frontend | `apps/web` | **Next.js** | `build:deploy` | `.next` | — (ignorado) | `turqueza.rovelbots.com` |
+
+> Si el panel muestra `Application type: Other` o un entry file distinto, corrígelo: un frontend
+> Next.js con entry `server.mjs` se comporta como gateway y termina en 503. La API con root `/`
+> y entry `apps/api/dist/main.js` funciona por casualidad, pero no es el modo recomendado.
+
 ---
 
 ## 3. Web App de la API (NestJS)
@@ -71,7 +85,7 @@ hPanel → **Websites → Add Website → Node.js web app → Connect with GitHu
 | Build script | `build:deploy` |
 | Output directory | `dist` |
 | Entry file | `main.js` |
-| Dominio | `api.tudominio.com` |
+| Dominio | `turqueza-api.rovelbots.com` |
 
 > El **entry file** es relativo al output directory. Escribe `main.js`, no `dist/main.js`.
 > No definas `PORT`: Hostinger lo inyecta y la API lee `process.env.PORT`.
@@ -85,9 +99,9 @@ DATABASE_URL="mysql://USUARIO:PASSWORD@localhost:3306/BASEDATOS?connection_limit
 NODE_ENV=production
 
 # Dominios exactos del frontend, separados por coma y sin barra final.
-CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com"
+CORS_ORIGIN="https://turqueza.rovelbots.com,https://www.turqueza.rovelbots.com"
 
-ADMIN_EMAIL="admin@tudominio.com"
+ADMIN_EMAIL="admin@turqueza.rovelbots.com"
 ADMIN_PASSWORD="una-contraseña-larga-y-segura"
 ADMIN_NAME="Administrador"
 ADMIN_JWT_SECRET="cadena-aleatoria-de-64-caracteres-minimo"
@@ -142,8 +156,8 @@ No dejes el seed activo en cada build: puede sobrescribir cambios de la tienda.
 ### Verificación de la API
 
 ```bash
-curl -i https://api.tudominio.com/api/health
-curl -i https://api.tudominio.com/api/products
+curl -i https://turqueza-api.rovelbots.com/api/health
+curl -i https://turqueza-api.rovelbots.com/api/products
 ```
 
 `/api/health` debe responder `200` con `{"status":"ok","db":"up"}`.
@@ -164,7 +178,7 @@ Crea una segunda Web App desde el mismo repositorio:
 | Build script | `build:deploy` |
 | Output directory | `.next` |
 | Entry file | (Hostinger lo ignora en Next.js) |
-| Dominio | `tudominio.com` y `www.tudominio.com` |
+| Dominio | `turqueza.rovelbots.com` y `www.turqueza.rovelbots.com` |
 
 Hostinger construye Next.js en modo servidor y aplica `output: "standalone"` automáticamente.
 El `next.config.mjs` del repo exporta un objeto, que es lo que Hostinger espera.
@@ -176,11 +190,11 @@ hPanel → Web App (Frontend) → **Environment variables**:
 ```env
 # URL pública de la API: la usa el navegador para pedidos y para /admin.
 # Absoluta, HTTPS y SIN barra final.
-NEXT_PUBLIC_API_URL="https://api.tudominio.com"
+NEXT_PUBLIC_API_URL="https://turqueza-api.rovelbots.com"
 
 # URL que usa el servidor de Next (RSC/SSR) para leer catálogo y configuración.
 # En Hostinger las dos Web Apps no comparten localhost: usa la URL pública.
-API_INTERNAL_URL="https://api.tudominio.com"
+API_INTERNAL_URL="https://turqueza-api.rovelbots.com"
 
 NEXT_PUBLIC_STORE_THEME=joyeria
 NODE_ENV=production
@@ -198,8 +212,8 @@ Notas importantes:
 ### Verificación del frontend
 
 ```bash
-curl -I https://tudominio.com
-curl -I https://tudominio.com/admin
+curl -I https://turqueza.rovelbots.com
+curl -I https://turqueza.rovelbots.com/admin
 ```
 
 La home debe mostrar productos reales, no los datos de respaldo de `fallback.ts`. Si muestra
@@ -213,19 +227,19 @@ datos de respaldo, la API no está respondiendo o `API_INTERNAL_URL` es incorrec
    frontend, separados por coma y sin barra final:
 
    ```env
-   CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com"
+   CORS_ORIGIN="https://turqueza.rovelbots.com,https://www.turqueza.rovelbots.com"
    ```
 
 2. Si vas a probar con la URL temporal de Hostinger (`*.hostingersite.com`), añádela también:
 
    ```env
-   CORS_ORIGIN="https://tudominio.com,https://www.tudominio.com,https://TU-APP-TEMPORAL.hostingersite.com"
+   CORS_ORIGIN="https://turqueza.rovelbots.com,https://www.turqueza.rovelbots.com,https://TU-APP-TEMPORAL.hostingersite.com"
    ```
 
    Cuando el dominio final funcione, elimina la URL temporal y pulsa **Redeploy** en la API.
 
-3. hPanel → **Seguridad → SSL** → activa Let's Encrypt para `tudominio.com`,
-   `www.tudominio.com` y `api.tudominio.com`. Fuerza HTTPS.
+3. hPanel → **Seguridad → SSL** → activa Let's Encrypt para `turqueza.rovelbots.com`,
+   `www.turqueza.rovelbots.com` y `turqueza-api.rovelbots.com`. Fuerza HTTPS.
 
 4. Asigna los dominios desde **Web App → Domains**. Si un dominio ya existía como sitio
    estático, elimínalo o desvincúlalo antes de asignarlo a la Web App.
@@ -235,10 +249,10 @@ datos de respaldo, la API no está respondiendo o `API_INTERNAL_URL` es incorrec
 ## 6. Orden recomendado del primer despliegue
 
 1. Crea la base MySQL.
-2. Crea la Web App de la **API** con root `apps/api`, variables y dominio `api.tudominio.com`.
+2. Crea la Web App de la **API** con root `apps/api`, variables y dominio `turqueza-api.rovelbots.com`.
 3. Despliega la API y verifica `/api/health`.
 4. Ejecuta el seed una vez.
-5. Crea la Web App del **frontend** con root `apps/web`, variables y dominio `tudominio.com`.
+5. Crea la Web App del **frontend** con root `apps/web`, variables y dominio `turqueza.rovelbots.com`.
 6. Despliega el frontend y verifica `/` y `/admin`.
 7. Prueba el login del panel y un checkout de WhatsApp.
 8. Si usaste `build:deploy:seed`, vuelve a `build:deploy` y haz **Redeploy** de la API.
@@ -258,7 +272,7 @@ datos de respaldo, la API no está respondiendo o `API_INTERNAL_URL` es incorrec
 - [ ] `NODE_ENV=production` en ambas apps.
 - [ ] `CORS_ORIGIN` con los dominios exactos del frontend.
 - [ ] `ADMIN_EMAIL`, `ADMIN_PASSWORD` (mín. 10) y `ADMIN_JWT_SECRET` (mín. 32) configurados.
-- [ ] `NEXT_PUBLIC_API_URL` y `API_INTERNAL_URL` apuntando a `https://api.tudominio.com`.
+- [ ] `NEXT_PUBLIC_API_URL` y `API_INTERNAL_URL` apuntando a `https://turqueza-api.rovelbots.com`.
 - [ ] Build del frontend rehecho después de cambiar `NEXT_PUBLIC_*`.
 - [ ] Migraciones aplicadas (`prisma migrate deploy`).
 - [ ] Seed ejecutado o catálogo cargado.

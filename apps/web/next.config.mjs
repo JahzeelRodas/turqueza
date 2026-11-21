@@ -11,10 +11,16 @@ const nextConfig = {
   },
   // El storefront consume la API NestJS por HTTP (headless).
   // En el despliegue de dos Web Apps:
-  //   NEXT_PUBLIC_API_URL=https://api.tudominio.com  (navegador)
-  //   API_INTERNAL_URL=https://api.tudominio.com     (RSC/SSR)
+  //   NEXT_PUBLIC_API_URL=https://turqueza-api.rovelbots.com  (navegador)
+  //   API_INTERNAL_URL=https://turqueza-api.rovelbots.com     (RSC/SSR)
+  // Ambas son el origen de la API, SIN /api: el cliente ya añade /api.
   env: {
     NEXT_PUBLIC_STORE_THEME: process.env.NEXT_PUBLIC_STORE_THEME ?? 'joyeria',
+  },
+  // En hosting compartido el build de Next puede agotar el límite de procesos
+  // al generar las páginas estáticas en paralelo. Un solo worker es suficiente.
+  experimental: {
+    cpus: 1,
   },
 };
 

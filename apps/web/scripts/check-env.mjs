@@ -22,12 +22,28 @@ function isHttpUrl(value) {
   }
 }
 
+/**
+ * El cliente y el servidor añaden `/api` a la base. Si la variable ya termina
+ * en `/api` la petición sale como `/api/api/...` y devuelve 404.
+ */
+function hasApiPath(value) {
+  try {
+    return /\/api\/?$/i.test(new URL(value).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalhostUrl(value) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::|\/|$)/i.test(value);
+}
+
 const publicUrl = process.env.NEXT_PUBLIC_API_URL?.trim() ?? '';
 const internalUrl = process.env.API_INTERNAL_URL?.trim() ?? '';
 
 if (!publicUrl && !allowSameOrigin) {
   errors.push(
-    'NEXT_PUBLIC_API_URL es obligatoria. Ejemplo: https://api.tudominio.com',
+    'NEXT_PUBLIC_API_URL es obligatoria. Ejemplo: https://turqueza-api.rovelbots.com',
   );
 } else if (publicUrl && !isHttpUrl(publicUrl)) {
   errors.push(
@@ -37,11 +53,29 @@ if (!publicUrl && !allowSameOrigin) {
   warnings.push('NEXT_PUBLIC_API_URL termina en "/": se recomienda sin barra final.');
 }
 
+if (publicUrl && hasApiPath(publicUrl)) {
+  errors.push(
+    'NEXT_PUBLIC_API_URL debe ser el origen de la API, sin /api. El cliente ya añade /api. Ejemplo: https://turqueza-api.rovelbots.com',
+  );
+}
+
 if (internalUrl && !isHttpUrl(internalUrl)) {
   errors.push('API_INTERNAL_URL debe ser una URL absoluta http(s).');
 } else if (!internalUrl && !allowSameOrigin) {
   warnings.push(
     'API_INTERNAL_URL no está definida: el servidor usará NEXT_PUBLIC_API_URL.',
+  );
+}
+
+if (internalUrl && hasApiPath(internalUrl)) {
+  errors.push(
+    'API_INTERNAL_URL debe ser el origen de la API, sin /api. El servidor ya añade /api. Ejemplo: https://turqueza-api.rovelbots.com',
+  );
+}
+
+if (internalUrl && isLocalhostUrl(internalUrl) && process.env.NODE_ENV === 'production') {
+  warnings.push(
+    'API_INTERNAL_URL apunta a localhost. En Hostinger cada Web App tiene su propia red: usa la URL pública de la API.',
   );
 }
 
