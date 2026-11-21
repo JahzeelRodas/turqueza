@@ -42,7 +42,38 @@ export function AddToCartPanel({ product }: { product: Product }) {
     return null;
   }
 
+
+
+
   function add(goToCheckout = false) {
+    const problem = validate();
+    setError(problem);
+    if (problem) return;
+
+    addItem(
+      {
+        productId: product.id,
+        slug: product.slug,
+        name: product.name,
+        image: product.images[0] ?? '',
+        sku: selected?.sku ?? product.sku ?? product.id,
+        variantId: selected?.id ?? product.id,
+        variantName: selected?.name ?? 'Estándar',
+        options: selected?.options ?? {},
+        price: unitPrice,
+        currency: product.currency,
+        engraving: engraving?.enabled ? engraving : null,
+      },
+      quantity,
+    );
+
+    if (goToCheckout) {
+      closeCart();
+      router.push('/checkout');
+    }
+  }
+
+  /*function add(goToCheckout = false) {
     const problem = validate();
     setError(problem);
     if (problem || !selected) return;
@@ -68,7 +99,7 @@ export function AddToCartPanel({ product }: { product: Product }) {
       closeCart();
       router.push('/checkout');
     }
-  }
+  }*/
 
   return (
     <div className="flex flex-col gap-6">

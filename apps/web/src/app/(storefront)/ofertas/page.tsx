@@ -11,7 +11,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: 'Ofertas',
   description:
-    'Piezas de joyería seleccionadas con descuento de temporada. Oro, plata y piedras naturales con envíos a toda Bolivia.',
+    'Piezas seleccionadas en acero inoxidable con descuento de temporada. Diseños resistentes al agua, hipoalergénicos y con envíos a toda Bolivia.',
 };
 
 export default async function OffersPage() {

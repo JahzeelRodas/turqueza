@@ -100,7 +100,7 @@ const shippingZones = [
 ];
 
 /* ── Configuración de la tienda (singleton) ─────────────────────────────── */
-const valueProps = [
+/*const valueProps = [
   {
     icon: 'gem',
     title: 'Materiales certificados',
@@ -121,9 +121,9 @@ const valueProps = [
     title: 'Garantía de por vida',
     description: 'Revisión, pulido y ajuste de talla sin costo.',
   },
-];
+];*/
 
-const navigation = {
+/*const navigation = {
   groups: [
     {
       label: 'Joyería',
@@ -171,7 +171,7 @@ const navigation = {
     { label: 'Envíos', href: '/envios' },
   ],
   announcement: 'Envío gratis en pedidos desde Bs 1.500 · Grabado láser incluido en piezas seleccionadas',
-};
+};*/
 
 const footer = {
   description:
@@ -199,16 +199,16 @@ const footer = {
     { label: 'Instagram', href: 'https://instagram.com' },
     { label: 'TikTok', href: 'https://tiktok.com' },
   ],
-  legal: '© 2026 Turquesa Joyería · La Paz, Bolivia',
+  legal: '© 2026 Turquesa Joyería · Santa Cruz, Bolivia',
 };
 
 /* ── Categorías ──────────────────────────────────────────────────────────── */
-const categories = [
+/*const categories = [
   { name: 'Anillos', slug: 'anillos', imageUrl: img('photo-1605100804763-247f67b3557e'), position: 1 },
   { name: 'Collares', slug: 'collares', imageUrl: img('photo-1599643478518-a784e5dc4708'), position: 2 },
   { name: 'Pendientes', slug: 'pendientes', imageUrl: img('photo-1617038220319-276d3cfab638'), position: 3 },
   { name: 'Brazaletes', slug: 'brazaletes', imageUrl: img('photo-1611591437281-460bfbe1220a'), position: 4 },
-];
+];*/
 
 /* ── Configuración del grabado láser (JSON reutilizable) ────────────────── */
 const engravingConfig = {
@@ -227,7 +227,7 @@ const engravingConfig = {
 };
 
 /* ── Productos (metadata JSON = atributos dinámicos del rubro) ───────────── */
-const products = [
+/*const products = [
   {
     slug: 'anillo-solitario-aurora',
     name: 'Anillo Solitario Aurora',
@@ -319,7 +319,7 @@ const homeLayout = [
     type: 'hero',
     eyebrow: 'Colección 2026',
     title: 'Alta joyería de autor',
-    subtitle: 'Piezas intemporales en oro, plata y piedras naturales. Diseñadas en La Paz para durar toda una vida.',
+    subtitle: 'Joyas. Diseñadas en Santa Cruz para durar toda una vida.',
     ctas: [
       { label: 'Descubrir colección', href: '/coleccion/todo', variant: 'primary' },
       { label: 'Nuestro atelier', href: '/nuestra-casa', variant: 'outline' },
@@ -386,7 +386,7 @@ async function main() {
   }
 
   /* 3) Categorías */
-  const categoryBySlug = new Map<string, string>();
+  /*const categoryBySlug = new Map<string, string>();
   for (const cat of categories) {
     const created = await prisma.category.upsert({
       where: { slug: cat.slug },
@@ -394,10 +394,10 @@ async function main() {
       create: cat,
     });
     categoryBySlug.set(cat.slug, created.id);
-  }
+  }*/
 
   /* 4) Productos + variantes */
-  for (const { categorySlug, variants, ...data } of products) {
+  /*for (const { categorySlug, variants, ...data } of products) {
     await prisma.product.upsert({
       where: { slug: data.slug },
       update: {},
@@ -411,7 +411,7 @@ async function main() {
         variants: { create: variants },
       },
     });
-  }
+  }*/
 
   console.log(
     '✅ Seed completado: StoreConfig + 9 zonas de envío + 4 categorías + 4 productos con variantes.',

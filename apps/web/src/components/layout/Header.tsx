@@ -74,7 +74,7 @@ export function Header({
                   <span className="text-gold">.</span>
                 </span>
                 <span className="mt-1 hidden font-sans text-[8px] uppercase tracking-air text-muted sm:block">
-                  Alta joyería · La Paz
+                  Alta joyería · Santa Cruz
                 </span>
               </Link>
             </div>

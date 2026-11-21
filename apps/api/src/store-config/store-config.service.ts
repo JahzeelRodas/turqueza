@@ -17,7 +17,7 @@ export class StoreConfigService {
     return this.prisma.storeConfig.create({
       data: {
         id: SINGLETON_ID,
-        storeName: 'Nueva tienda',
+        storeName: 'Turqueza',
         currency: 'BOB',
         locale: 'es-BO',
         country: 'Bolivia',

@@ -104,7 +104,7 @@ export default async function ProductPage({ params }: PageProps) {
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-muted">
                   Personaliza esta pieza con hasta {product.engraving.maxChars} caracteres. El
-                  grabado se realiza a mano en nuestro taller de La Paz y añade 2 días hábiles a
+                  grabado se realiza a mano en nuestro taller de Santa Cruz y añade 2 días hábiles a
                   la preparación del pedido.
                 </p>
               </div>
@@ -126,10 +126,10 @@ export default async function ProductPage({ params }: PageProps) {
             ) : null}
 
             <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Feature icon={Gem} title="Materiales nobles" text="Oro y plata con certificado de autenticidad." />
-              <Feature icon={Sparkles} title="Hecho a mano" text="Trabajado pieza a pieza en La Paz, Bolivia." />
+              <Feature icon={Gem} title="Acero inoxidable 316L" text="Hipoalergénico, resistente al agua y al uso diario." />
+              <Feature icon={Sparkles} title="Grabado láser" text="Personalización de precisión en Santa Cruz, Bolivia." />
               <Feature icon={PackageCheck} title="Envío asegurado" text="Cobertura en los 9 departamentos del país." />
-              <Feature icon={ShieldCheck} title="Garantía de por vida" text="Pulido y ajuste de talla sin costo." />
+              <Feature icon={ShieldCheck} title="Brillo duradero" text="No se oxida, no se oscurece ni mancha la piel." />
             </div>
           </div>
         </div>

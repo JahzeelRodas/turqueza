@@ -23,7 +23,7 @@ export default async function ContactPage() {
         </h1>
         <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted">
           Atendemos por WhatsApp de lunes a sábado, de 9:00 a 19:00 (hora de Bolivia). También
-          puedes visitarnos en nuestro atelier de La Paz con cita previa.
+          puedes visitar nuestra sala de exposición.
         </p>
 
         <div className="mt-10 grid gap-4 sm:grid-cols-2">
@@ -35,14 +35,14 @@ export default async function ContactPage() {
           >
             <p className="font-sans text-[10px] uppercase tracking-[0.16em] opacity-70">WhatsApp</p>
             <p className="mt-2 font-serif text-2xl">+{phone}</p>
-            <p className="mt-3 text-xs opacity-80">Respuesta en menos de 24 horas hábiles.</p>
+            <p className="mt-3 text-xs opacity-80">Respuesta en menos de 24 horas.</p>
           </a>
 
           <div className="rounded-card border border-line bg-surface p-6">
             <p className="font-sans text-[10px] uppercase tracking-[0.16em] text-muted">Atelier</p>
-            <p className="mt-2 font-serif text-2xl">La Paz, Bolivia</p>
+            <p className="mt-2 font-serif text-2xl">Santa Cruz, Bolivia</p>
             <p className="mt-3 text-xs leading-relaxed text-muted">
-              Zona Sopocachi · Visitas con cita previa.
+              Santa Cruz · Visitas con cita previa.
               <br />
               Lunes a sábado · 9:00 – 19:00
             </p>

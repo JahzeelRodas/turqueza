@@ -383,7 +383,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 <Input
                   value={form.subtitle}
                   onChange={(event) => patch('subtitle', event.target.value)}
-                  placeholder="Oro blanco 18k · Turquesa natural"
+                  placeholder="Acero inoxidable 316L · Grabado láser"
                 />
               </Field>
 
@@ -404,7 +404,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 <Input
                   value={form.tags}
                   onChange={(event) => patch('tags', event.target.value)}
-                  placeholder="oro, anillo, turquesa"
+                  placeholder="anillo, turquesa"
                 />
               </Field>
             </div>
@@ -695,7 +695,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                           ),
                         )
                       }
-                      placeholder="Oro blanco 18k"
+                      placeholder="Acero inoxidable 316L"
                     />
                     <AdminButton
                       size="icon"

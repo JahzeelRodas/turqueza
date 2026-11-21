@@ -8,7 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const config = await getStoreConfig();
   const description =
     config.tagline ??
-    'Joyería de autor hecha a mano en Bolivia. Oro, plata y piedras naturales con grabado láser personalizado y envíos a los 9 departamentos.';
+    'Joyería en acero inoxidable 316L en Bolivia. Personaliza cada pieza con grabado láser de precisión y recíbela con envío a los 9 departamentos.';
 
   return {
     title: {

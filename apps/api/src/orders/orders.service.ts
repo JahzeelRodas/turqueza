@@ -48,17 +48,44 @@ export class OrdersService {
 
   /** Crea un pedido calculando TODOS los precios desde la DB (nunca desde el cliente). */
   async create(dto: CreateOrderDto) {
-    const variantIds = [...new Set(dto.items.map((i) => i.variantId))];
+    const requestedIds = [...new Set(dto.items.map((i) => i.variantId))];
 
     const variants = await this.prisma.productVariant.findMany({
-      where: { id: { in: variantIds }, isActive: true },
+      where: { id: { in: requestedIds }, isActive: true },
       include: { product: true },
     });
-    if (variants.length === 0) {
-      throw new BadRequestException('Ninguna variante del pedido es válida');
+
+    const byVariantId = new Map(variants.map((v) => [v.id, v]));
+    const unmatchedIds = requestedIds.filter((id) => !byVariantId.has(id));
+
+    const fallbackProducts = unmatchedIds.length
+      ? await this.prisma.product.findMany({
+          where: {
+            id: { in: unmatchedIds },
+          },
+        })
+      : [];
+
+    const activeVariantCounts = fallbackProducts.length
+      ? await this.prisma.productVariant.groupBy({
+          by: ['productId'],
+          where: {
+            productId: { in: fallbackProducts.map((p) => p.id) },
+            isActive: true,
+          },
+          _count: { _all: true },
+        })
+      : [];
+
+    const activeVariantsByProductId = new Map(
+      activeVariantCounts.map((row) => [row.productId, row._count._all]),
+    );
+    const byProductId = new Map(fallbackProducts.map((p) => [p.id, p]));
+
+    if (variants.length === 0 && fallbackProducts.length === 0) {
+      throw new BadRequestException('Ninguna variante o producto del pedido es válido');
     }
 
-    const byId = new Map(variants.map((v) => [v.id, v]));
     const itemsData: Array<Prisma.OrderItemUncheckedCreateWithoutOrderInput> = [];
     const messageItems: Array<{
       name: string;
@@ -77,42 +104,64 @@ export class OrdersService {
     }> = [];
 
     let subtotal = 0;
+    let currency: string | null = null;
 
     for (const item of dto.items) {
-      const variant = byId.get(item.variantId);
-      if (!variant) {
-        throw new BadRequestException(`La variante ${item.variantId} no está disponible`);
+      const variant = byVariantId.get(item.variantId);
+      const product = variant?.product ?? byProductId.get(item.variantId);
+
+      if (!product) {
+        throw new BadRequestException(`El ítem ${item.variantId} no está disponible`);
       }
-      if (item.quantity > variant.stock) {
+
+      const productActiveVariants = activeVariantsByProductId.get(product.id) ?? 0;
+      if (!variant && productActiveVariants > 0) {
         throw new BadRequestException(
-          `Stock insuficiente para ${variant.name} (disponibles: ${variant.stock})`,
+          `Selecciona una variante válida para ${product.name}`,
         );
       }
 
-      const engraving = this.resolveEngraving(item.engraving, variant.product);
-      const unitPrice = variant.price ?? variant.product.price;
+      const availableStock = variant ? variant.stock : product.stock;
+      const itemName = variant ? variant.name : product.name;
+      const itemSku = variant?.sku ?? product.slug ?? product.id;
+      const unitPrice = variant?.price ?? product.price;
+      const itemOptions = variant
+        ? (variant.options as Prisma.InputJsonValue)
+        : Prisma.JsonNull;
+
+      if (item.quantity > availableStock) {
+        throw new BadRequestException(
+          `Stock insuficiente para ${itemName} (disponibles: ${availableStock})`,
+        );
+      }
+
+      if (!currency) {
+        currency = product.currency;
+      }
+
+      const engraving = this.resolveEngraving(item.engraving, product);
       const lineTotal = (unitPrice + (engraving?.price ?? 0)) * item.quantity;
       subtotal += lineTotal;
 
       itemsData.push({
-        variantId: variant.id,
-        productId: variant.productId,
-        name: variant.name,
-        sku: variant.sku,
+        ...(variant ? { variantId: variant.id } : {}),
+        productId: product.id,
+        name: itemName,
+        sku: itemSku,
         unitPrice,
         quantity: item.quantity,
         total: lineTotal,
-        options: variant.options as Prisma.InputJsonValue,
+        options: itemOptions,
         engraving: engraving ? (engraving as unknown as Prisma.InputJsonValue) : undefined,
       });
 
       messageItems.push({
-        name: variant.name,
-        sku: variant.sku,
+        name: itemName,
+        sku: itemSku,
         quantity: item.quantity,
         unitPrice,
         total: lineTotal,
-        options: variant.options as unknown as Record<string, unknown>,
+        options: variant ? (variant.options as unknown as Record<string, unknown>) : null,
         engraving: engraving
           ? {
               enabled: true,
@@ -139,7 +188,7 @@ export class OrdersService {
 
     const shippingCost = zone ? this.shipping.quote(zone, subtotal) : FALLBACK_SHIPPING;
     const total = subtotal + shippingCost;
-    const currency = variants[0].product.currency;
+    const resolvedCurrency = currency ?? 'BOB';
     const orderNumber = this.generateOrderNumber();
 
     /* ── Mensaje de WhatsApp (misma fuente para guardar y abrir) ───────── */
@@ -160,7 +209,7 @@ export class OrdersService {
       shippingEta: zone?.estimatedDays ?? null,
       subtotal,
       total,
-      currency,
+      currency: resolvedCurrency,
       notes: dto.notes,
     });
 
@@ -178,7 +227,7 @@ export class OrdersService {
         subtotal,
         shipping: shippingCost,
         total,
-        currency,
+        currency: resolvedCurrency,
         whatsappMessage,
         items: { create: itemsData },
       },
@@ -188,7 +237,7 @@ export class OrdersService {
     const phone = config?.whatsappNumber;
     return {
       ...order,
-      formattedTotal: formatMoney(total, currency),
+      formattedTotal: formatMoney(total, resolvedCurrency),
       whatsappUrl: phone ? buildWhatsAppUrl(phone, whatsappMessage) : null,
       whatsappMessage,
     };
