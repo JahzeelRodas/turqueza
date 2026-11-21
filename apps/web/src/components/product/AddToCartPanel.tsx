@@ -56,7 +56,7 @@ export function AddToCartPanel({ product }: { product: Product }) {
         slug: product.slug,
         name: product.name,
         image: product.images[0] ?? '',
-        sku: selected?.sku ?? product.sku ?? product.id,
+        sku: selected?.sku ?? product.slug ?? product.id,
         variantId: selected?.id ?? product.id,
         variantName: selected?.name ?? 'Estándar',
         options: selected?.options ?? {},
@@ -238,7 +238,7 @@ export function AddToCartPanel({ product }: { product: Product }) {
 
       <ul className="space-y-2 border-t border-line pt-5 text-[11px] leading-relaxed text-muted">
         <li>• Envío asegurado a los 9 departamentos de Bolivia.</li>
-        <li>• Grabado láser realizado en nuestro atelier de La Paz.</li>
+        <li>• Grabado láser realizado en nuestro atelier en Santa Cruz.</li>
         <li>• Embalaje de regalo y certificado de autenticidad incluidos.</li>
       </ul>
     </div>
